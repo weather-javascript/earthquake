@@ -1,0 +1,2408 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>強震モニタ NEXUS v7 — 国分寺観測所 | マルチEEW並列解析</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700;800&family=Noto+Sans+JP:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#040608;--surface:#080c12;--surface2:#0d1219;--surface3:#121a24;
+  --border:rgba(80,140,255,0.07);--border2:rgba(80,140,255,0.14);--border3:rgba(80,140,255,0.22);
+  --text:#c8d8ee;--muted:#4a5a6e;--muted2:#6a7e94;
+  --accent:#2a80ff;--accent2:#00c4ff;
+  --green:#00e090;--amber:#ffaa30;--red:#ff3d57;--red2:#ff1840;
+  --purple:#9b4dff;--cyan:#00e5ff;--orange:#ff6d00;
+  --radius:10px;--radius-sm:6px;--radius-lg:16px;
+  --font-mono:'JetBrains Mono',monospace;--font-jp:'Noto Sans JP',sans-serif;
+  --glass-bg:rgba(8,12,20,0.82);--glass-border:rgba(80,160,255,0.16);
+  --shadow:0 20px 60px rgba(0,0,0,0.7);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth;-webkit-tap-highlight-color:transparent}
+body{font-family:var(--font-jp);background:var(--bg);color:var(--text);min-height:100vh;overflow-x:hidden}
+body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,0.03) 2px,rgba(0,0,0,0.03) 4px);pointer-events:none;z-index:9998}
+
+/* ==================== START OVERLAY ==================== */
+#start-overlay{position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;background:radial-gradient(ellipse at 50% 50%, #0a1525 0%, #040608 70%)}
+#start-overlay.hidden{display:none}
+.start-card{text-align:center;padding:48px 40px;background:rgba(10,14,22,0.9);border:1px solid rgba(80,160,255,0.2);border-radius:20px;backdrop-filter:blur(20px);max-width:460px;width:calc(100% - 32px);box-shadow:0 0 80px rgba(42,128,255,0.08),var(--shadow)}
+.start-logo{font-family:var(--font-mono);font-size:11px;font-weight:700;color:var(--accent2);letter-spacing:0.22em;text-transform:uppercase;margin-bottom:8px}
+.start-title{font-size:28px;font-weight:700;line-height:1.2;margin-bottom:6px;background:linear-gradient(135deg,#fff 0%,var(--accent2) 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.start-sub{font-size:13px;color:var(--muted2);line-height:1.7;margin-bottom:28px}
+.start-location{font-family:var(--font-mono);font-size:11px;color:var(--green);padding:8px 16px;border-radius:99px;background:rgba(0,224,144,0.07);border:1px solid rgba(0,224,144,0.18);display:inline-block;margin-bottom:28px}
+.start-features{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:28px;text-align:left}
+.start-feat{font-size:11px;color:var(--muted2);padding:8px 10px;background:rgba(80,140,255,0.04);border:0.5px solid var(--border2);border-radius:8px;line-height:1.5}
+.start-feat strong{display:block;color:var(--text);font-weight:600;margin-bottom:2px}
+.start-btn{width:100%;padding:14px;border-radius:12px;border:none;cursor:pointer;background:linear-gradient(135deg,var(--accent) 0%,#5a6aff 100%);color:#fff;font-size:15px;font-weight:700;font-family:var(--font-jp);letter-spacing:0.05em;transition:all 0.2s;box-shadow:0 8px 32px rgba(42,128,255,0.35)}
+.start-btn:hover{transform:translateY(-1px);box-shadow:0 12px 40px rgba(42,128,255,0.45)}
+.start-disclaimer{font-size:10px;color:var(--muted);margin-top:14px;line-height:1.7}
+
+/* ==================== LAYOUT ==================== */
+.app-root{display:grid;grid-template-columns:1fr;max-width:800px;margin:0 auto;padding:0 12px 40px}
+
+/* ==================== TOPBAR ==================== */
+.topbar{display:flex;align-items:center;gap:10px;height:52px;padding:0 2px;border-bottom:0.5px solid var(--border);position:sticky;top:0;z-index:300;background:rgba(4,6,8,0.94);backdrop-filter:blur(16px)}
+.topbar-logo{font-size:11px;font-weight:800;letter-spacing:0.2em;color:var(--accent2);font-family:var(--font-mono)}
+.topbar-logo em{color:var(--red);font-style:normal;font-size:9px}
+.topbar-clock{font-size:12px;font-family:var(--font-mono);color:var(--muted);letter-spacing:0.05em}
+.topbar-right{margin-left:auto;display:flex;align-items:center;gap:8px}
+.status-pill{display:flex;align-items:center;gap:5px;padding:3px 9px;border-radius:99px;background:var(--surface2);border:0.5px solid var(--border2)}
+.status-dot{width:6px;height:6px;border-radius:50%;background:var(--muted);transition:all 0.3s}
+.status-dot.live{background:var(--green);animation:blink 1.8s ease infinite}
+.status-dot.warn{background:var(--amber);animation:blink 0.6s ease infinite}
+.status-dot.err{background:var(--red)}
+.status-label{font-size:10px;color:var(--muted);font-family:var(--font-mono)}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0.15}}
+
+.axis-pill{display:flex;align-items:center;gap:5px;padding:3px 9px;border-radius:99px;background:var(--surface2);border:0.5px solid var(--border2);font-size:10px;font-family:var(--font-mono)}
+.axis-pill.connected{border-color:rgba(0,229,255,0.28);background:rgba(0,229,255,0.05)}
+.axis-pill.connecting{border-color:rgba(255,170,0,0.28);background:rgba(255,170,0,0.05)}
+.axis-pill.disconnected{border-color:rgba(255,61,87,0.2)}
+.axis-label{color:var(--muted2)}
+.axis-pill.connected .axis-label{color:var(--cyan)}
+.axis-pill.connecting .axis-label{color:var(--amber)}
+
+/* ==================== TV TICKER ==================== */
+#tv-ticker{display:none;position:fixed;top:0;left:0;right:0;z-index:9500;padding:0;overflow:hidden;pointer-events:none}
+#tv-ticker.active{display:block}
+.tv-ticker-inner{
+  background:linear-gradient(90deg,rgba(255,24,64,0.98),rgba(200,0,40,0.98),rgba(255,24,64,0.98));
+  border-bottom:2px solid rgba(255,200,0,0.9);
+  box-shadow:0 0 30px rgba(255,24,64,0.7),0 4px 20px rgba(0,0,0,0.6);
+  padding:8px 20px;
+  font-family:var(--font-jp);
+  font-size:15px;
+  font-weight:800;
+  color:#fff;
+  letter-spacing:0.06em;
+  text-align:center;
+  animation:tickerIn 0.4s cubic-bezier(0.22,1,0.36,1);
+  text-shadow:0 0 20px rgba(255,200,0,0.8);
+}
+@keyframes tickerIn{from{transform:translateY(-100%)}to{transform:translateY(0)}}
+.tv-ticker-glow{
+  position:absolute;inset:0;
+  background:repeating-linear-gradient(90deg,transparent,rgba(255,255,255,0.06) 2px,transparent 4px);
+  pointer-events:none;
+}
+
+/* ==================== MULTI-EEW PARALLEL LIST ==================== */
+#multi-eew-panel{display:none;margin:10px 0 6px;flex-direction:column;gap:5px}
+#multi-eew-panel.active{display:flex}
+.meew-header{font-size:9px;font-weight:800;letter-spacing:0.14em;color:var(--red2);font-family:var(--font-mono);text-transform:uppercase;padding:4px 0;display:flex;align-items:center;gap:6px}
+.meew-header::before{content:'';width:6px;height:6px;border-radius:50%;background:var(--red2);animation:blink 0.6s ease infinite;flex-shrink:0}
+.meew-count-badge{background:rgba(255,24,64,0.15);color:var(--red2);border:0.5px solid rgba(255,24,64,0.3);padding:1px 7px;border-radius:99px;font-size:9px;font-family:var(--font-mono)}
+.meew-item{background:rgba(255,24,64,0.06);border:0.5px solid rgba(255,24,64,0.25);border-radius:8px;padding:10px 12px;display:flex;align-items:center;gap:10px;animation:slideIn 0.3s ease;position:relative;overflow:hidden}
+.meew-item::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--red2)}
+.meew-item.low-si::before{background:var(--amber)}
+.meew-num{font-size:9px;font-weight:800;color:var(--muted);font-family:var(--font-mono);min-width:16px}
+.meew-place{font-size:12px;font-weight:700;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.meew-mag{font-size:18px;font-weight:800;color:var(--red2);font-family:var(--font-mono);min-width:42px;text-align:right}
+.meew-detail{font-size:10px;color:var(--muted2);font-family:var(--font-mono);min-width:0;white-space:nowrap}
+.meew-si{font-size:11px;font-weight:700;padding:1px 7px;border-radius:4px;background:rgba(255,170,0,0.12);border:0.5px solid rgba(255,170,0,0.3);color:var(--amber);font-family:var(--font-mono)}
+
+/* Max SI highlight panel */
+#max-si-panel{display:none;background:linear-gradient(135deg,rgba(255,24,64,0.1),rgba(100,0,24,0.06));border:1px solid rgba(255,24,64,0.4);border-radius:10px;padding:12px 16px;margin-bottom:6px;align-items:center;gap:14px}
+#max-si-panel.active{display:flex}
+.max-si-label{font-size:10px;font-weight:700;letter-spacing:0.12em;color:var(--red);font-family:var(--font-mono);text-transform:uppercase}
+.max-si-value{font-size:48px;font-weight:800;font-family:var(--font-mono);line-height:1;color:var(--red2)}
+.max-si-from{font-size:11px;color:var(--muted2);margin-top:2px}
+
+/* ==================== EEW BANNER ==================== */
+#eew-banner{display:none;position:relative;overflow:hidden;margin:10px 0 6px;border-radius:var(--radius);border:1.5px solid rgba(255,24,64,0.6);background:linear-gradient(135deg,rgba(255,24,64,0.12),rgba(100,0,24,0.08));animation:eewIn 0.3s cubic-bezier(0.22,1,0.36,1)}
+#eew-banner.active{display:block}
+@keyframes eewIn{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:none}}
+.eew-scan{position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent,var(--red2),transparent);animation:scan 1s linear infinite}
+@keyframes scan{from{transform:translateX(-100%)}to{transform:translateX(100%)}}
+.eew-inner{display:flex;align-items:center;gap:14px;padding:14px 16px;flex-wrap:wrap}
+.eew-pulse-icon{width:56px;height:56px;border-radius:50%;flex-shrink:0;background:rgba(255,24,64,0.18);border:2px solid rgba(255,24,64,0.7);display:flex;align-items:center;justify-content:center;flex-direction:column;font-size:9px;font-weight:900;color:var(--red2);letter-spacing:0.04em;gap:1px;animation:eewPulse 0.7s ease-in-out infinite alternate;font-family:var(--font-mono)}
+@keyframes eewPulse{from{transform:scale(1);box-shadow:0 0 0 0 rgba(255,24,64,0.5)}to{transform:scale(1.12);box-shadow:0 0 0 12px rgba(255,24,64,0)}}
+.eew-body{flex:1;min-width:0}
+.eew-tag{font-size:9px;font-weight:800;color:var(--red);letter-spacing:0.14em;margin-bottom:2px;font-family:var(--font-mono)}
+.eew-place{font-size:22px;font-weight:700;letter-spacing:-0.02em;line-height:1.1;margin-bottom:4px}
+.eew-stats{display:flex;gap:14px;flex-wrap:wrap}
+.eew-stat{font-size:12px;color:var(--muted)}
+.eew-stat span{color:var(--text);font-weight:600}
+.eew-mag{font-size:42px;font-weight:800;color:var(--red);letter-spacing:-0.05em;flex-shrink:0;font-family:var(--font-mono);line-height:1}
+.eew-si-prediction{font-size:12px;padding:4px 12px;border-radius:6px;background:rgba(255,170,0,0.12);border:0.5px solid rgba(255,170,0,0.3);color:var(--amber);font-family:var(--font-mono);font-weight:600}
+.eew-source-tag{font-size:9px;color:var(--muted);margin-top:3px}
+
+/* ==================== MAP SECTION ==================== */
+.map-section{margin:10px 0 8px;border-radius:var(--radius);overflow:hidden;border:0.5px solid var(--border2);background:var(--surface);position:relative}
+.map-header{display:flex;align-items:center;gap:8px;justify-content:space-between;padding:8px 12px;border-bottom:0.5px solid var(--border);background:rgba(8,12,20,0.9)}
+.map-title{font-size:11px;font-weight:600;color:var(--muted);letter-spacing:0.08em;text-transform:uppercase;font-family:var(--font-mono)}
+.map-badge{font-size:10px;padding:2px 8px;border-radius:4px;background:rgba(0,196,255,0.08);color:var(--accent2);border:0.5px solid rgba(0,196,255,0.2);font-family:var(--font-mono)}
+.map-controls{display:flex;gap:5px;align-items:center}
+#leaflet-map{height:420px;width:100%;position:relative}
+#wave-canvas{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:400;border-radius:0}
+/* Heatmap canvas layered below wave-canvas */
+#heatmap-canvas{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:398;border-radius:0;display:none}
+#heatmap-canvas.active{display:block}
+
+.leaflet-container{background:#04080f!important;font-family:var(--font-jp)!important}
+.leaflet-popup-content-wrapper{background:rgba(8,12,22,0.95)!important;border:0.5px solid var(--border3)!important;color:var(--text)!important;border-radius:10px!important;backdrop-filter:blur(12px)!important;box-shadow:0 8px 32px rgba(0,0,0,0.6)!important}
+.leaflet-popup-tip{background:rgba(8,12,22,0.95)!important}
+.leaflet-popup-content{font-size:12px!important;line-height:1.8!important;font-family:var(--font-jp)!important}
+.leaflet-bar a{background:rgba(8,12,22,0.9)!important;color:var(--text)!important;border-color:var(--border3)!important}
+.leaflet-bar a:hover{background:var(--surface3)!important}
+
+.my-location-icon{width:20px;height:20px;border-radius:50%;background:rgba(0,224,144,0.2);border:2px solid var(--green);display:flex;align-items:center;justify-content:center;animation:locationPulse 2s ease infinite}
+@keyframes locationPulse{0%,100%{box-shadow:0 0 0 0 rgba(0,224,144,0.4)}50%{box-shadow:0 0 0 10px rgba(0,224,144,0)}}
+.epicenter-icon{width:16px;height:16px;border-radius:50%;background:rgba(255,24,64,0.3);border:2px solid var(--red2);animation:epicPulse 0.6s ease infinite alternate}
+@keyframes epicPulse{from{box-shadow:0 0 0 0 rgba(255,24,64,0.6)}to{box-shadow:0 0 0 14px rgba(255,24,64,0)}}
+.epicenter-icon-2{width:14px;height:14px;border-radius:50%;background:rgba(255,109,0,0.3);border:2px solid var(--orange);animation:epicPulse2 0.8s ease infinite alternate}
+@keyframes epicPulse2{from{box-shadow:0 0 0 0 rgba(255,109,0,0.6)}to{box-shadow:0 0 0 12px rgba(255,109,0,0)}}
+
+.map-info-overlay{position:absolute;top:10px;left:10px;z-index:600;background:rgba(4,8,14,0.82);backdrop-filter:blur(12px);border:0.5px solid var(--border2);border-radius:8px;padding:8px 10px;font-size:10px;color:var(--muted);font-family:var(--font-mono);line-height:1.8;pointer-events:none;min-width:140px}
+.map-info-overlay strong{color:var(--text)}
+.si-legend{position:absolute;bottom:30px;right:8px;z-index:600;background:rgba(4,8,14,0.84);backdrop-filter:blur(8px);border-radius:7px;padding:8px;border:0.5px solid var(--border2)}
+.si-legend-title{font-size:9px;color:var(--muted);letter-spacing:0.08em;margin-bottom:5px;font-family:var(--font-mono)}
+.si-row{display:flex;align-items:center;gap:5px;margin-bottom:2px}
+.si-swatch{width:10px;height:10px;border-radius:2px;flex-shrink:0}
+.si-text{font-size:9px;color:var(--text);font-family:var(--font-mono)}
+.map-footer{display:flex;align-items:center;justify-content:space-between;padding:5px 12px;background:rgba(0,0,0,0.3);border-top:0.5px solid var(--border)}
+.nied-src{font-size:10px;color:var(--muted)}
+.nied-dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--muted);margin-right:4px;vertical-align:middle;transition:background 0.3s}
+.nied-dot.fetching{background:var(--amber);animation:blink 0.5s ease infinite}
+.nied-dot.ok{background:var(--green)}
+.nied-dot.fail{background:var(--red)}
+.hsv-badge{font-size:9px;color:var(--purple);font-family:var(--font-mono);padding:2px 6px;border-radius:3px;background:rgba(155,77,255,0.08);border:0.5px solid rgba(155,77,255,0.2)}
+
+/* Tooltip for station hover */
+#station-tooltip{
+  position:fixed;z-index:9000;pointer-events:none;
+  background:rgba(8,14,26,0.94);
+  border:0.5px solid var(--border3);
+  border-radius:8px;padding:7px 12px;
+  font-family:var(--font-mono);font-size:11px;color:var(--text);
+  backdrop-filter:blur(12px);
+  box-shadow:0 8px 24px rgba(0,0,0,0.6);
+  display:none;white-space:nowrap;
+}
+#station-tooltip.visible{display:block}
+#station-tooltip .tt-name{font-weight:700;color:var(--accent2);margin-bottom:2px}
+#station-tooltip .tt-si{font-size:14px;font-weight:800}
+
+/* ==================== ARRIVAL PANEL ==================== */
+#arrival-panel{position:fixed;bottom:20px;right:16px;width:250px;background:var(--glass-bg);backdrop-filter:blur(24px) saturate(1.4);-webkit-backdrop-filter:blur(24px) saturate(1.4);border:0.5px solid var(--glass-border);border-radius:16px;padding:16px;z-index:800;box-shadow:0 12px 50px rgba(0,0,0,0.7),0 0 0 0.5px rgba(80,160,255,0.08) inset;transform:translateX(290px);opacity:0;pointer-events:none;transition:transform 0.45s cubic-bezier(0.22,1,0.36,1),opacity 0.35s}
+#arrival-panel.visible{transform:translateX(0);opacity:1;pointer-events:auto}
+.ap-title{font-size:9px;font-weight:700;letter-spacing:0.14em;color:var(--muted);text-transform:uppercase;font-family:var(--font-mono);margin-bottom:12px;display:flex;align-items:center;gap:6px}
+.ap-title::before{content:'';width:6px;height:6px;border-radius:50%;background:var(--red2);animation:blink 0.6s ease infinite;flex-shrink:0}
+.ap-waves{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px}
+.ap-wave{text-align:center}
+.ap-wave-label{font-size:9px;font-weight:700;letter-spacing:0.1em;font-family:var(--font-mono);margin-bottom:4px}
+.ap-wave-label.p{color:var(--cyan)}
+.ap-wave-label.s{color:var(--amber)}
+.ap-timer{font-size:34px;font-weight:800;line-height:1;font-family:var(--font-mono)}
+.ap-timer.p{color:var(--cyan)}
+.ap-timer.s{color:var(--amber)}
+.ap-timer.arrived{color:var(--red);font-size:13px;animation:blink 0.4s ease infinite}
+.ap-unit{font-size:9px;color:var(--muted);margin-top:1px}
+.ap-divider{height:0.5px;background:var(--border2);margin:10px 0}
+.ap-si{display:flex;align-items:center;justify-content:space-between;font-size:11px;margin-bottom:6px}
+.ap-si-label{color:var(--muted)}
+.ap-si-val{font-weight:700;font-family:var(--font-mono);font-size:15px}
+.ap-countdown{background:rgba(255,24,64,0.08);border:0.5px solid rgba(255,24,64,0.2);border-radius:6px;padding:6px 10px;font-size:11px;font-family:var(--font-mono);text-align:center;color:var(--amber);display:none;margin-top:8px;font-weight:600}
+.ap-countdown.active{display:block}
+.ap-loc{font-size:9px;color:var(--muted);font-family:var(--font-mono);margin-top:6px}
+
+/* ==================== TABS ==================== */
+.tabs{display:flex;gap:2px;margin:10px 0 8px;background:var(--surface);border-radius:var(--radius-sm);padding:3px}
+.tab{flex:1;padding:7px 10px;border-radius:4px;border:none;background:transparent;color:var(--muted);font-size:12px;font-weight:500;cursor:pointer;transition:all 0.15s;font-family:inherit}
+.tab.active{background:var(--surface3);color:var(--text)}
+.tab-panel{display:none}
+.tab-panel.active{display:block}
+
+/* ==================== METRICS ==================== */
+.metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:10px}
+.metric{background:var(--surface);border:0.5px solid var(--border);border-radius:var(--radius);padding:10px 12px}
+.metric-label{font-size:10px;color:var(--muted);margin-bottom:4px;letter-spacing:0.05em;font-family:var(--font-mono)}
+.metric-value{font-size:20px;font-weight:700;letter-spacing:-0.03em;font-family:var(--font-mono)}
+.metric-value.warn{color:var(--amber)}
+.metric-value.danger{color:var(--red)}
+.metric-value.ok{color:var(--green)}
+
+/* ==================== CONTROLS ==================== */
+.controls{display:flex;gap:6px;align-items:center;margin-bottom:10px;flex-wrap:wrap}
+.btn{font-size:12px;font-weight:600;padding:6px 14px;border-radius:var(--radius-sm);border:0.5px solid var(--border2);background:var(--surface2);color:var(--text);cursor:pointer;transition:all 0.15s;font-family:inherit;letter-spacing:0.02em}
+.btn:hover{background:var(--surface3);border-color:rgba(80,140,255,0.3)}
+.btn.primary{background:var(--accent);border-color:transparent;color:#fff}
+.btn.primary:hover{background:#4090ff}
+.btn.danger-btn{background:rgba(255,61,87,0.1);border-color:rgba(255,61,87,0.32);color:var(--red)}
+.btn.demo-btn{background:rgba(155,77,255,0.08);border-color:rgba(155,77,255,0.28);color:var(--purple)}
+.btn.heatmap-btn{background:rgba(0,196,255,0.07);border-color:rgba(0,196,255,0.25);color:var(--accent2)}
+.btn.heatmap-btn.active{background:rgba(0,196,255,0.18);border-color:rgba(0,196,255,0.5)}
+.btn:disabled{opacity:0.4;cursor:not-allowed}
+.btn-sm{font-size:11px;padding:4px 10px}
+.mag-filter{display:flex;align-items:center;gap:6px;margin-left:auto;font-size:11px;color:var(--muted)}
+input[type=range]{-webkit-appearance:none;width:70px;height:2px;background:var(--border2);border-radius:2px;outline:none}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:12px;height:12px;border-radius:50%;background:var(--accent);cursor:pointer}
+.mag-val{font-size:12px;font-weight:700;color:var(--accent);min-width:24px;font-family:var(--font-mono)}
+
+/* ==================== FEED ==================== */
+.section-header{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.section-label{font-size:10px;font-weight:700;color:var(--muted);letter-spacing:0.1em;text-transform:uppercase;font-family:var(--font-mono)}
+.count-badge{font-size:10px;padding:2px 7px;border-radius:99px;background:var(--surface2);color:var(--muted);margin-left:auto;font-family:var(--font-mono)}
+.feed{display:flex;flex-direction:column;gap:5px}
+.empty-state{text-align:center;padding:36px 20px;color:var(--muted);font-size:13px;border:0.5px dashed var(--border2);border-radius:var(--radius);line-height:2}
+.loading-state{text-align:center;padding:28px 20px;color:var(--muted);font-size:12px;display:flex;flex-direction:column;align-items:center;gap:10px}
+.spinner{width:20px;height:20px;border:1.5px solid var(--border2);border-top-color:var(--accent);border-radius:50%;animation:spin 0.7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.eq-card{background:var(--surface);border:0.5px solid var(--border);border-radius:var(--radius);padding:10px 12px;display:flex;align-items:center;gap:10px;transition:all 0.2s;animation:slideIn 0.3s ease;position:relative;overflow:hidden;cursor:pointer}
+.eq-card:hover{background:var(--surface2);border-color:var(--border3)}
+.eq-card::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;border-radius:3px 0 0 3px}
+.eq-card.level-low::before{background:var(--green);opacity:0.5}
+.eq-card.level-mid::before{background:var(--amber)}
+.eq-card.level-high::before{background:var(--red)}
+.eq-card.eew{border-color:rgba(255,61,87,0.38);background:rgba(255,61,87,0.04)}
+.eq-card.is-new{border-color:rgba(42,128,255,0.28)}
+@keyframes slideIn{from{opacity:0;transform:translateY(-5px)}to{opacity:1;transform:none}}
+.mag-badge{width:44px;height:44px;border-radius:var(--radius-sm);display:flex;flex-direction:column;align-items:center;justify-content:center;flex-shrink:0;font-weight:700}
+.mag-badge .mag-num{font-size:15px;line-height:1;font-family:var(--font-mono)}
+.mag-badge .mag-label{font-size:8px;letter-spacing:0.07em;opacity:0.6}
+.mag-low{background:rgba(0,224,144,0.1);color:var(--green)}
+.mag-mid{background:rgba(255,170,48,0.1);color:var(--amber)}
+.mag-high{background:rgba(255,61,87,0.12);color:var(--red)}
+.mag-demo{background:rgba(155,77,255,0.1);color:var(--purple)}
+.eq-info{flex:1;min-width:0}
+.eq-place{font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:3px}
+.eq-meta{font-size:11px;color:var(--muted);display:flex;gap:8px;flex-wrap:wrap}
+.eew-badge{display:inline-block;font-size:9px;font-weight:700;background:var(--red);color:#fff;padding:1px 5px;border-radius:3px;margin-right:4px;letter-spacing:0.06em}
+.demo-tag{display:inline-block;font-size:9px;font-weight:700;background:rgba(155,77,255,0.2);color:var(--purple);padding:1px 5px;border-radius:3px;margin-right:4px}
+.eq-time{font-size:10px;color:var(--muted);text-align:right;flex-shrink:0;font-family:var(--font-mono);white-space:nowrap}
+.eq-arrow{font-size:10px;color:var(--border3);flex-shrink:0;transition:color 0.2s}
+.eq-card:hover .eq-arrow{color:var(--muted2)}
+.separator{display:flex;align-items:center;gap:8px;margin:10px 0 6px;font-size:10px;color:var(--muted);font-family:var(--font-mono);letter-spacing:0.08em}
+.separator::before,.separator::after{content:'';flex:1;height:0.5px;background:var(--border)}
+.notif-banner{background:rgba(42,128,255,0.07);border:0.5px solid rgba(42,128,255,0.18);border-radius:var(--radius-sm);padding:9px 12px;display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;font-size:12px}
+.notif-banner p{color:var(--muted);flex:1;line-height:1.5}
+.notif-banner.granted{background:rgba(0,224,144,0.06);border-color:rgba(0,224,144,0.18)}
+.notif-banner.granted p{color:var(--green)}
+.demo-info{background:rgba(155,77,255,0.05);border:0.5px solid rgba(155,77,255,0.2);border-radius:var(--radius-sm);padding:10px 12px;margin-bottom:10px;font-size:12px;color:#c0a0f8;line-height:1.7;display:none}
+.demo-info.active{display:block}
+.demo-scenario-btns{display:flex;gap:5px;margin-top:8px;flex-wrap:wrap}
+.demo-scenario{font-size:11px;padding:5px 12px;border-radius:99px;border:0.5px solid rgba(155,77,255,0.28);background:rgba(155,77,255,0.07);color:var(--purple);cursor:pointer;font-family:inherit;transition:all 0.15s}
+.demo-scenario:hover{background:rgba(155,77,255,0.16)}
+.demo-scenario.dual{border-color:rgba(255,61,87,0.4);background:rgba(255,61,87,0.08);color:var(--red)}
+.demo-scenario.dual:hover{background:rgba(255,61,87,0.16)}
+
+/* ==================== DETAIL MODAL ==================== */
+#detail-modal{position:fixed;inset:0;z-index:1000;display:flex;align-items:flex-end;justify-content:center;background:rgba(0,0,0,0);pointer-events:none;transition:background 0.3s}
+#detail-modal.open{background:rgba(0,0,0,0.7);pointer-events:auto}
+.modal-sheet{width:100%;max-width:600px;max-height:90vh;overflow-y:auto;background:var(--surface);border:0.5px solid var(--border3);border-radius:20px 20px 0 0;padding:20px 20px 40px;transform:translateY(100%);transition:transform 0.4s cubic-bezier(0.22,1,0.36,1);box-shadow:0 -20px 60px rgba(0,0,0,0.6)}
+#detail-modal.open .modal-sheet{transform:translateY(0)}
+.modal-handle{width:40px;height:4px;background:var(--border3);border-radius:2px;margin:0 auto 20px}
+.modal-header{display:flex;align-items:flex-start;gap:14px;margin-bottom:20px}
+.modal-mag{width:60px;height:60px;flex-shrink:0;border-radius:10px;display:flex;flex-direction:column;align-items:center;justify-content:center;font-weight:700}
+.modal-mag .mn{font-size:20px;font-family:var(--font-mono);line-height:1}
+.modal-mag .ml{font-size:9px;opacity:0.6;margin-top:2px;letter-spacing:0.08em}
+.modal-title{font-size:22px;font-weight:700;line-height:1.2;margin-bottom:6px}
+.modal-time{font-size:12px;color:var(--muted);font-family:var(--font-mono)}
+.modal-close{margin-left:auto;width:28px;height:28px;border-radius:50%;background:var(--surface2);border:0.5px solid var(--border2);color:var(--muted);cursor:pointer;font-size:14px;flex-shrink:0;display:flex;align-items:center;justify-content:center;transition:all 0.15s}
+.modal-close:hover{background:var(--surface3);color:var(--text)}
+.modal-section{margin-bottom:20px}
+.modal-section-title{font-size:10px;font-weight:700;color:var(--muted);letter-spacing:0.1em;text-transform:uppercase;font-family:var(--font-mono);margin-bottom:10px;display:flex;align-items:center;gap:6px}
+.modal-section-title::after{content:'';flex:1;height:0.5px;background:var(--border)}
+.modal-mini-map{height:180px;border-radius:10px;overflow:hidden;border:0.5px solid var(--border2)}
+.modal-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.modal-stat{background:var(--surface2);border:0.5px solid var(--border);border-radius:8px;padding:10px 12px}
+.modal-stat-label{font-size:10px;color:var(--muted);margin-bottom:3px;font-family:var(--font-mono)}
+.modal-stat-val{font-size:16px;font-weight:700;font-family:var(--font-mono)}
+.kokubunji-card{background:linear-gradient(135deg,rgba(42,128,255,0.08),rgba(0,196,255,0.04));border:0.5px solid rgba(42,128,255,0.22);border-radius:10px;padding:14px;margin-bottom:16px}
+.kokubunji-card-title{font-size:10px;font-weight:700;color:var(--accent2);letter-spacing:0.1em;text-transform:uppercase;font-family:var(--font-mono);margin-bottom:10px}
+.kokubunji-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.ks{text-align:center}
+.ks-label{font-size:9px;color:var(--muted);margin-bottom:3px;font-family:var(--font-mono)}
+.ks-val{font-size:18px;font-weight:700;font-family:var(--font-mono)}
+.intensity-list{display:flex;flex-direction:column;gap:4px}
+.intensity-row{display:flex;align-items:center;gap:10px;padding:6px 10px;border-radius:6px;background:var(--surface2);border-left:3px solid transparent}
+.intensity-row.koku-highlight{background:rgba(42,128,255,0.08);border-left-color:var(--accent2)}
+.i-swatch{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.i-place{flex:1;font-size:12px}
+.i-val{font-size:12px;font-weight:700;font-family:var(--font-mono)}
+.tsunami-badge{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:8px;font-size:12px;font-weight:600;margin-top:4px}
+.tsunami-none{background:rgba(0,224,144,0.08);border:0.5px solid rgba(0,224,144,0.2);color:var(--green)}
+.tsunami-warn{background:rgba(255,170,0,0.1);border:0.5px solid rgba(255,170,0,0.3);color:var(--amber)}
+.tsunami-major{background:rgba(255,24,64,0.1);border:0.5px solid rgba(255,24,64,0.3);color:var(--red)}
+
+/* ==================== SOURCE STATUS BAR ==================== */
+.source-bar{display:flex;gap:8px;flex-wrap:wrap;padding:8px 10px;background:var(--surface);border:0.5px solid var(--border);border-radius:var(--radius-sm);margin-bottom:10px}
+.source-item{display:flex;align-items:center;gap:5px;font-size:10px;color:var(--muted);font-family:var(--font-mono)}
+.src-dot{width:6px;height:6px;border-radius:50%;background:var(--muted)}
+.src-dot.active{background:var(--green);animation:blink 1.8s ease infinite}
+.src-dot.standby{background:var(--amber)}
+.src-dot.error{background:var(--red)}
+.src-label{font-size:9px;padding:1px 5px;border-radius:3px;font-family:var(--font-mono);font-weight:700;letter-spacing:0.05em}
+.src-label.p2p{background:rgba(0,196,255,0.12);color:var(--accent2)}
+.src-label.wolfx{background:rgba(155,77,255,0.12);color:var(--purple)}
+.src-label.axis{background:rgba(0,229,255,0.12);color:var(--cyan)}
+.src-label.demo{background:rgba(155,77,255,0.12);color:var(--purple)}
+
+/* ==================== ABOUT TAB ==================== */
+.about-grid{display:grid;grid-template-columns:auto 1fr;gap:8px 16px;font-size:12px}
+.about-grid span:first-child{color:var(--muted)}
+
+/* ==================== MOBILE ==================== */
+@media(max-width:480px){
+  .eew-mag{font-size:32px}.eew-place{font-size:18px}
+  #arrival-panel{width:calc(100% - 32px);bottom:12px;right:16px}
+  .modal-grid{grid-template-columns:1fr}.kokubunji-stats{grid-template-columns:1fr 1fr 1fr}
+  .start-features{grid-template-columns:1fr}#leaflet-map{height:320px}
+  .topbar-right{gap:4px}.max-si-value{font-size:36px}
+}
+@media(max-width:360px){.metrics{grid-template-columns:1fr 1fr}}
+</style>
+</head>
+<body>
+
+<!-- ==================== TV TICKER ==================== -->
+<div id="tv-ticker">
+  <div class="tv-ticker-inner" id="tv-ticker-text">【震度速報】最大震度3を観測</div>
+  <div class="tv-ticker-glow"></div>
+</div>
+
+<!-- ==================== START OVERLAY ==================== -->
+<div id="start-overlay">
+  <div class="start-card">
+    <div class="start-logo">KyoshinMon · NEXUS v7</div>
+    <div class="start-title">強震モニタ<br>マルチEEW並列解析</div>
+    <p class="start-sub">NIED全観測点 + HSV多項式補間エンジン<br>複数地震の同時追跡・物理的震度計算</p>
+    <div class="start-location">📍 東京都国分寺市 35.70°N / 139.48°E</div>
+    <div class="start-features">
+      <div class="start-feat"><strong>🔵 NIED全観測点</strong>K-NET/KiK-net 800点超を実データで常時表示</div>
+      <div class="start-feat"><strong>🌈 精密カラーマッピング</strong>0.1刻み線形補間・Lerpアンチフリッカー</div>
+      <div class="start-feat"><strong>🌊 マルチEEW並列</strong>複数地震を同時追跡・P/S波を個別に描画</div>
+      <div class="start-feat"><strong>🎯 大崎距離減衰式</strong>マグニチュード・深さ・距離による正確な震度予測</div>
+      <div class="start-feat"><strong>📡 TV報道風テロップ</strong>震度3以上で発光テロップ自動表示</div>
+      <div class="start-feat"><strong>🔥 ヒートマップ</strong>面補間による震度分布の直感的可視化</div>
+    </div>
+    <button class="start-btn" onclick="initApp()">観測開始 — 通知・音声を許可する</button>
+    <p class="start-disclaimer">本アプリは参考情報です。実際の防災行動は<br>気象庁・自治体の公式情報に従ってください。</p>
+  </div>
+</div>
+
+<!-- ==================== MAIN APP ==================== -->
+<div class="app-root">
+
+  <!-- TOPBAR -->
+  <div class="topbar">
+    <span class="topbar-logo">KyoshinMon<em> NEXUS v7</em></span>
+    <span class="topbar-clock" id="clock">--:--:--</span>
+    <div class="topbar-right">
+      <div class="status-pill">
+        <span class="status-dot" id="ws-dot"></span>
+        <span class="status-label" id="ws-label">未接続</span>
+      </div>
+      <div class="axis-pill disconnected" id="axis-pill">
+        <span class="status-dot" id="axis-dot"></span>
+        <span class="axis-label" id="axis-label">Axis: 未接続</span>
+      </div>
+    </div>
+  </div>
+
+  <div>
+
+    <!-- MULTI-EEW MAX SI PANEL -->
+    <div id="max-si-panel">
+      <div style="flex:1">
+        <div class="max-si-label">全EEW最大予測震度 — 国分寺市</div>
+        <div class="max-si-value" id="max-si-value">—</div>
+        <div class="max-si-from" id="max-si-from">—</div>
+      </div>
+    </div>
+
+    <!-- MULTI-EEW PARALLEL LIST -->
+    <div id="multi-eew-panel">
+      <div class="meew-header">
+        同時多発地震 — 並列追跡中
+        <span class="meew-count-badge" id="meew-count">0件</span>
+      </div>
+      <div id="meew-list"></div>
+    </div>
+
+    <!-- EEW BANNER (最新/最強) -->
+    <div id="eew-banner">
+      <div class="eew-scan"></div>
+      <div class="eew-inner">
+        <div class="eew-pulse-icon">緊急<br>速報<br>EEW</div>
+        <div class="eew-body">
+          <div class="eew-tag">EMERGENCY EARTHQUAKE WARNING · <span id="eew-source-tag">—</span></div>
+          <div class="eew-place" id="eew-place">—</div>
+          <div class="eew-stats">
+            <div class="eew-stat">深さ <span id="eew-depth">—</span>km</div>
+            <div class="eew-stat">発生 <span id="eew-time-val">—</span></div>
+            <div class="eew-si-prediction" id="eew-si-pred">国分寺 予測: —</div>
+          </div>
+          <div class="eew-source-tag" id="eew-source-info">電文種別: —</div>
+        </div>
+        <div class="eew-mag" id="eew-mag">—</div>
+      </div>
+    </div>
+
+    <!-- SOURCE STATUS BAR -->
+    <div class="source-bar" id="source-bar" style="display:none">
+      <div class="source-item"><span class="src-dot standby" id="src-p2p"></span>P2P地震情報</div>
+      <div class="source-item"><span class="src-dot" id="src-wolfx"></span>Wolfx API</div>
+      <div class="source-item"><span class="src-dot" id="src-axis"></span>Axis EEW</div>
+      <div class="source-item" style="margin-left:auto;font-size:10px;color:var(--muted2)" id="first-report-label"></div>
+    </div>
+
+    <!-- MAP SECTION -->
+    <div class="map-section">
+      <div class="map-header">
+        <span class="map-title">🌐 強震モニタ — NIED全観測点 / 精密カラーマッピング</span>
+        <span class="map-badge" id="kyoshin-time">待機中</span>
+        <div class="map-controls">
+          <span class="hsv-badge" id="hsv-status">HSV待機</span>
+          <button class="btn btn-sm heatmap-btn" id="btn-heatmap" onclick="toggleHeatmap()">ヒートMAP</button>
+          <button class="btn btn-sm" id="btn-kyoshin" onclick="toggleKyoshin()">観測開始</button>
+        </div>
+      </div>
+      <div style="position:relative">
+        <div id="leaflet-map"></div>
+        <canvas id="heatmap-canvas"></canvas>
+        <canvas id="wave-canvas"></canvas>
+        <div class="map-info-overlay">
+          <strong>K-NET / KiK-net</strong><br>
+          観測点: <span id="station-count">—</span><br>
+          最大震度: <span id="max-si-display">—</span>
+        </div>
+        <div class="si-legend">
+          <div class="si-legend-title">JMA震度</div>
+          <div class="si-row"><div class="si-swatch" style="background:#aa00aa"></div><span class="si-text">7</span></div>
+          <div class="si-row"><div class="si-swatch" style="background:#dc001e"></div><span class="si-text">6強</span></div>
+          <div class="si-row"><div class="si-swatch" style="background:#ff2800"></div><span class="si-text">6弱</span></div>
+          <div class="si-row"><div class="si-swatch" style="background:#ff5a00"></div><span class="si-text">5強</span></div>
+          <div class="si-row"><div class="si-swatch" style="background:#ffaa00"></div><span class="si-text">5弱</span></div>
+          <div class="si-row"><div class="si-swatch" style="background:#ffff00"></div><span class="si-text">4</span></div>
+          <div class="si-row"><div class="si-swatch" style="background:#00dc50"></div><span class="si-text">3</span></div>
+          <div class="si-row"><div class="si-swatch" style="background:#00a078"></div><span class="si-text">2</span></div>
+          <div class="si-row"><div class="si-swatch" style="background:#0050a0"></div><span class="si-text">1</span></div>
+          <div class="si-row"><div class="si-swatch" style="background:#0a285a"></div><span class="si-text">常時</span></div>
+        </div>
+      </div>
+      <div class="map-footer">
+        <span class="nied-src"><span class="nied-dot" id="nied-dot"></span>NIED 強震観測網 / 防災科研</span>
+        <span style="font-size:10px;color:var(--muted)" id="nied-fps">—</span>
+      </div>
+    </div>
+
+    <!-- TABS -->
+    <div class="tabs">
+      <button class="tab active" onclick="switchTab('feed',this)">速報フィード</button>
+      <button class="tab" onclick="switchTab('analysis',this)">解析</button>
+      <button class="tab" onclick="switchTab('about',this)">観測拠点</button>
+    </div>
+
+    <!-- FEED TAB -->
+    <div class="tab-panel active" id="tab-feed">
+      <div class="metrics">
+        <div class="metric"><div class="metric-label">受信件数</div><div class="metric-value" id="m-count">0</div></div>
+        <div class="metric"><div class="metric-label">最大 Mag.</div><div class="metric-value" id="m-max">—</div></div>
+        <div class="metric"><div class="metric-label">最終更新</div><div class="metric-value" style="font-size:12px;padding-top:4px" id="m-last">—</div></div>
+      </div>
+      <div id="notif-banner" class="notif-banner">
+        <p>バックグラウンド通知でS波到達・震度予測を受け取る</p>
+        <button class="btn btn-sm" onclick="requestNotif()">許可</button>
+      </div>
+      <div class="controls">
+        <button class="btn primary" id="btn-connect" onclick="toggleConnect()">接続開始</button>
+        <button class="btn demo-btn" id="btn-demo" onclick="toggleDemo()">デモ</button>
+        <div class="mag-filter">
+          <label>M</label>
+          <input type="range" min="1" max="6" step="0.5" value="1" id="min-mag" oninput="updateMinMag(this.value)">
+          <span class="mag-val" id="min-mag-val">1.0</span>以上
+        </div>
+      </div>
+      <div class="demo-info" id="demo-info">
+        <strong>デモモード v7</strong> — 単発・同時多発シナリオを選択してください
+        <div class="demo-scenario-btns">
+          <button class="demo-scenario" onclick="runScenario('small')">小規模 M2.8</button>
+          <button class="demo-scenario" onclick="runScenario('medium')">中規模 M4.5</button>
+          <button class="demo-scenario" onclick="runScenario('large')">大規模 M6.2</button>
+          <button class="demo-scenario" onclick="runScenario('eew')">緊急速報 M7.3</button>
+          <button class="demo-scenario" onclick="runScenario('tokai')">東海沖 M8.0</button>
+          <button class="demo-scenario" onclick="runScenario('noto')">能登半島 M7.6</button>
+          <button class="demo-scenario" onclick="runScenario('311')">東日本大震 M9.0</button>
+          <button class="demo-scenario dual" onclick="runDualScenario()">🔴 同時多発: 三陸沖+東京直下</button>
+          <button class="demo-scenario" onclick="clearAllEEW()">EEWクリア</button>
+        </div>
+      </div>
+      <div class="section-header">
+        <span class="section-label">地震情報フィード</span>
+        <span class="count-badge" id="feed-count">0件</span>
+      </div>
+      <div class="feed" id="feed">
+        <div class="empty-state">「接続開始」でP2P地震情報に接続<br>「デモ」で動作確認できます</div>
+      </div>
+    </div>
+
+    <!-- ANALYSIS TAB -->
+    <div class="tab-panel" id="tab-analysis">
+      <div style="background:var(--surface);border:0.5px solid var(--border2);border-radius:var(--radius);padding:16px;margin-bottom:10px">
+        <div style="font-size:10px;font-weight:700;color:var(--muted);letter-spacing:0.1em;margin-bottom:12px;font-family:var(--font-mono)">国分寺市 地盤・地震解析</div>
+        <div class="modal-grid" style="gap:8px">
+          <div class="modal-stat"><div class="modal-stat-label">地盤増幅率 (ARV)</div><div class="modal-stat-val" style="color:var(--amber)">× 1.5</div></div>
+          <div class="modal-stat"><div class="modal-stat-label">地質分類</div><div class="modal-stat-val" style="font-size:13px">洪積台地</div></div>
+          <div class="modal-stat"><div class="modal-stat-label">P波速度 Vp</div><div class="modal-stat-val">6.0 <span style="font-size:10px;color:var(--muted)">km/s</span></div></div>
+          <div class="modal-stat"><div class="modal-stat-label">S波速度 Vs</div><div class="modal-stat-val">3.5 <span style="font-size:10px;color:var(--muted)">km/s</span></div></div>
+          <div class="modal-stat"><div class="modal-stat-label">直近EEW 予測震度</div><div class="modal-stat-val" id="last-si-pred">—</div></div>
+          <div class="modal-stat"><div class="modal-stat-label">S波到達まで</div><div class="modal-stat-val" id="last-s-time">—</div></div>
+        </div>
+      </div>
+      <div style="background:var(--surface);border:0.5px solid var(--border2);border-radius:var(--radius);padding:16px;margin-bottom:10px">
+        <div style="font-size:10px;font-weight:700;color:var(--muted);letter-spacing:0.1em;margin-bottom:12px;font-family:var(--font-mono)">精密カラーマッピング (NIED公式カラーテーブル準拠)</div>
+        <div style="font-size:12px;color:var(--muted2);line-height:1.9">
+          <strong style="color:var(--purple)">ステップ1: 計測震度 → RGB線形補間</strong><br>
+          KyoshinShindoColorMap.csv の0.1刻みテーブルから厳密に色を決定<br><br>
+          <strong style="color:var(--purple)">ステップ2: Lerp (線形補間) アンチフリッカー</strong><br>
+          前フレームの色から次フレームの色へ0.5秒かけてスムーズに遷移<br><br>
+          <strong style="color:var(--purple)">ステップ3: 波紋 (Ripple) エフェクト</strong><br>
+          震度0.5以上の観測点で透過円が外側に広がるアニメーションを描画
+        </div>
+      </div>
+      <div style="background:var(--surface);border:0.5px solid var(--border2);border-radius:var(--radius);padding:16px">
+        <div style="font-size:10px;font-weight:700;color:var(--muted);letter-spacing:0.1em;margin-bottom:12px;font-family:var(--font-mono)">距離減衰式 (大崎1994 + 補正)</div>
+        <div style="font-size:12px;color:var(--muted2);line-height:1.9">
+          log(A) = 0.72·Mw − 1.66·log(R) − 0.0026·R + 0.24<br>
+          Mw(Mj変換) = Mj≥6.5 ? Mj×0.92+0.26 : Mj×0.95<br>
+          R = √(D² + H²)  深さ補正: H&gt;100km: −0.5, H&gt;60km: −0.25<br>
+          地盤補正: +0.6·log(ARV) ≈ +0.26 (ARV=1.5)<br>
+          距離クリップ: D&gt;500km→+3.0上限, D&gt;300km→+4.0上限
+        </div>
+      </div>
+    </div>
+
+    <!-- ABOUT TAB -->
+    <div class="tab-panel" id="tab-about">
+      <div style="background:var(--surface);border:0.5px solid var(--border2);border-radius:var(--radius);padding:16px;font-size:13px;line-height:2">
+        <div style="font-size:11px;font-weight:700;color:var(--muted);letter-spacing:0.1em;margin-bottom:12px;font-family:var(--font-mono)">OBSERVATION STATION · KOKUBUNJI · v7</div>
+        <div class="about-grid">
+          <span>観測地点</span><span style="font-weight:600">東京都国分寺市</span>
+          <span>緯度</span><span style="font-family:var(--font-mono)">35.7026° N</span>
+          <span>経度</span><span style="font-family:var(--font-mono)">139.4834° E</span>
+          <span>地盤増幅率(ARV)</span><span style="font-family:var(--font-mono);color:var(--amber)">1.5 (洪積台地)</span>
+          <span>観測点データ</span><span>K-NET/KiK-net 802点 (NIED実座標DB)</span>
+          <span>色変換</span><span style="color:var(--purple)">精密カラーマッピング + Lerp補間</span>
+          <span>震度算出</span><span>大崎(1994)距離減衰式 + ARV補正</span>
+          <span>マルチEEW</span><span>Map管理 — 複数地震を同時追跡</span>
+          <span>波面描画</span><span>全EEW独立P/S波同心円 + 透過重合</span>
+          <span>アラート</span><span>TV風テロップ + 音声 + プッシュ通知</span>
+          <span>Axis接続</span><span>WebSocket 心拍確認 + 自動再接続</span>
+          <span>地図エンジン</span><span>Leaflet.js + CartoDB Dark</span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ==================== FLOATING ARRIVAL PANEL ==================== -->
+<div id="arrival-panel">
+  <div class="ap-title">到達時間 — 国分寺市</div>
+  <div class="ap-waves">
+    <div class="ap-wave">
+      <div class="ap-wave-label p">P波</div>
+      <div class="ap-timer p" id="ap-timer">--</div>
+      <div class="ap-unit">秒後</div>
+    </div>
+    <div class="ap-wave">
+      <div class="ap-wave-label s">S波</div>
+      <div class="ap-timer s" id="as-timer">--</div>
+      <div class="ap-unit">秒後</div>
+    </div>
+  </div>
+  <div class="ap-divider"></div>
+  <div class="ap-si">
+    <span class="ap-si-label">最大予測震度</span>
+    <span class="ap-si-val" id="arrival-si-val">—</span>
+  </div>
+  <div class="ap-countdown" id="ap-countdown">S波到達まで — 秒</div>
+  <div class="ap-loc">📍 国分寺市 35.70°N 139.48°E</div>
+</div>
+
+<!-- ==================== STATION TOOLTIP ==================== -->
+<div id="station-tooltip">
+  <div class="tt-name" id="tt-name">観測点名</div>
+  <div class="tt-si" id="tt-si">震度 —</div>
+</div>
+
+<!-- ==================== DETAIL MODAL ==================== -->
+<div id="detail-modal">
+  <div class="modal-sheet" id="modal-sheet">
+    <div class="modal-handle"></div>
+    <div class="modal-header">
+      <div class="modal-mag" id="modal-mag-badge">
+        <span class="mn" id="modal-mag-num">—</span>
+        <span class="ml" id="modal-mag-label">QUAKE</span>
+      </div>
+      <div style="flex:1;min-width:0">
+        <div class="modal-title" id="modal-place">—</div>
+        <div class="modal-time" id="modal-time">—</div>
+      </div>
+      <button class="modal-close" onclick="closeModal()">✕</button>
+    </div>
+    <div class="kokubunji-card" id="modal-kokubunji" style="display:none">
+      <div class="kokubunji-card-title">📍 国分寺市への影響</div>
+      <div class="kokubunji-stats">
+        <div class="ks"><div class="ks-label" id="modal-koku-si-label">観測震度</div><div class="ks-val" id="modal-koku-si" style="color:var(--amber)">—</div></div>
+        <div class="ks"><div class="ks-label">P波到達</div><div class="ks-val" id="modal-koku-tp" style="color:var(--cyan)">—s</div></div>
+        <div class="ks"><div class="ks-label">S波到達</div><div class="ks-val" id="modal-koku-ts" style="color:var(--amber)">—s</div></div>
+      </div>
+    </div>
+    <div class="modal-section">
+      <div class="modal-section-title">震源地</div>
+      <div class="modal-mini-map" id="mini-map"></div>
+    </div>
+    <div class="modal-section">
+      <div class="modal-section-title">詳細情報</div>
+      <div class="modal-grid">
+        <div class="modal-stat"><div class="modal-stat-label">マグニチュード</div><div class="modal-stat-val" id="modal-detail-mag">—</div></div>
+        <div class="modal-stat"><div class="modal-stat-label">震源深さ</div><div class="modal-stat-val" id="modal-depth">—</div></div>
+        <div class="modal-stat"><div class="modal-stat-label">最大震度</div><div class="modal-stat-val" id="modal-maxscale">—</div></div>
+        <div class="modal-stat"><div class="modal-stat-label">震央座標</div><div class="modal-stat-val" style="font-size:11px" id="modal-coords">—</div></div>
+        <div class="modal-stat"><div class="modal-stat-label">震央距離(国分寺)</div><div class="modal-stat-val" id="modal-dist">—</div></div>
+        <div class="modal-stat"><div class="modal-stat-label">津波情報</div><div class="modal-stat-val" id="modal-tsunami-short">—</div></div>
+      </div>
+    </div>
+    <div class="modal-section" id="modal-tsunami-section">
+      <div class="modal-section-title">津波・警報情報</div>
+      <div id="modal-tsunami-badge"></div>
+    </div>
+    <div class="modal-section" id="modal-intensity-section" style="display:none">
+      <div class="modal-section-title">各地の震度</div>
+      <div class="intensity-list" id="modal-intensity-list"></div>
+    </div>
+  </div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+/* ===================================================================
+   CONFIG
+=================================================================== */
+const MY_LAT   = 35.7026;
+const MY_LNG   = 139.4834;
+const VP       = 6.0;
+const VS       = 3.5;
+const R_EARTH  = 6371;
+const AMP_FACTOR = 1.5;
+
+/* ===================================================================
+   CLOCK
+=================================================================== */
+function pad(n){return String(n).padStart(2,'0')}
+setInterval(()=>{
+  const n=new Date();
+  const cl=document.getElementById('clock');
+  if(cl)cl.textContent=pad(n.getHours())+':'+pad(n.getMinutes())+':'+pad(n.getSeconds());
+},500);
+
+/* ===================================================================
+   NIED KYOSHIN COLOR TABLE (KyoshinShindoColorMap.csv — embedded)
+   Format: [intensity, R, G, B]  from -3.0 to 7.0 in 0.1 steps
+=================================================================== */
+const KYOSHIN_COLOR_TABLE = [
+  [-3.0,0,0,205],[-2.9,0,7,209],[-2.8,0,14,214],[-2.7,0,21,218],[-2.6,0,28,223],
+  [-2.5,0,36,227],[-2.4,0,43,231],[-2.3,0,50,236],[-2.2,0,57,240],[-2.1,0,64,245],
+  [-2.0,0,72,250],[-1.9,0,85,238],[-1.8,0,99,227],[-1.7,0,112,216],[-1.6,0,126,205],
+  [-1.5,0,140,194],[-1.4,0,153,183],[-1.3,0,167,172],[-1.2,0,180,161],[-1.1,0,194,150],
+  [-1.0,0,208,139],[-0.9,6,212,130],[-0.8,12,216,121],[-0.7,18,220,113],[-0.6,25,224,104],
+  [-0.5,31,228,96],[-0.4,37,233,88],[-0.3,44,237,79],[-0.2,50,241,71],[-0.1,56,245,62],
+  [0.0,63,250,54],[0.1,75,250,49],[0.2,88,250,45],[0.3,100,251,41],[0.4,113,251,37],
+  [0.5,125,252,33],[0.6,138,252,28],[0.7,151,253,24],[0.8,163,253,20],[0.9,176,254,16],
+  [1.0,189,255,12],[1.1,195,254,10],[1.2,202,254,9],[1.3,208,254,8],[1.4,215,254,7],
+  [1.5,222,255,5],[1.6,228,254,4],[1.7,235,255,3],[1.8,241,254,2],[1.9,248,255,1],
+  [2.0,255,255,0],[2.1,254,251,0],[2.2,254,248,0],[2.3,254,244,0],[2.4,254,241,0],
+  [2.5,255,238,0],[2.6,254,234,0],[2.7,255,231,0],[2.8,254,227,0],[2.9,255,224,0],
+  [3.0,255,221,0],[3.1,254,213,0],[3.2,254,205,0],[3.3,254,197,0],[3.4,254,190,0],
+  [3.5,255,182,0],[3.6,254,174,0],[3.7,255,167,0],[3.8,254,159,0],[3.9,255,151,0],
+  [4.0,255,144,0],[4.1,254,136,0],[4.2,254,128,0],[4.3,254,121,0],[4.4,254,113,0],
+  [4.5,255,106,0],[4.6,254,98,0],[4.7,255,90,0],[4.8,254,83,0],[4.9,255,75,0],
+  [5.0,255,68,0],[5.1,254,61,0],[5.2,253,54,0],[5.3,252,47,0],[5.4,251,40,0],
+  [5.5,250,33,0],[5.6,249,27,0],[5.7,248,20,0],[5.8,247,13,0],[5.9,246,6,0],
+  [6.0,245,0,0],[6.1,238,0,0],[6.2,230,0,0],[6.3,223,0,0],[6.4,215,0,0],
+  [6.5,208,0,0],[6.6,200,0,0],[6.7,192,0,0],[6.8,185,0,0],[6.9,177,0,0],
+  [7.0,170,0,0]
+];
+const CT_MIN = -3.0;
+const CT_MAX = 7.0;
+const CT_STEP = 0.1;
+
+/* 精密カラーマッピング: 計測震度 → {r,g,b} (0.1刻み線形補間) */
+function siToRgb(si){
+  const clamped = Math.max(CT_MIN, Math.min(CT_MAX, si));
+  const idx = (clamped - CT_MIN) / CT_STEP;
+  const lo = Math.floor(idx);
+  const hi = Math.min(lo + 1, KYOSHIN_COLOR_TABLE.length - 1);
+  const t = idx - lo;
+  const [,r0,g0,b0] = KYOSHIN_COLOR_TABLE[lo];
+  const [,r1,g1,b1] = KYOSHIN_COLOR_TABLE[hi];
+  return {
+    r: Math.round(r0 + (r1-r0)*t),
+    g: Math.round(g0 + (g1-g0)*t),
+    b: Math.round(b0 + (b1-b0)*t)
+  };
+}
+function siToRgbStr(si, alpha=1){
+  const {r,g,b} = siToRgb(si);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+
+/* ===================================================================
+   NIED STATION DATABASE (NIED_SeismicStation_20260425.csv — embedded)
+   Extracted: code, lat(WGS84), lng(WGS84), name(EN), retired
+   Source columns: col[3]=code, col[5]=nameEN, col[7]=lat, col[8]=lng, col[15]=retired
+=================================================================== */
+const NIED_STATIONS_RAW = [
+  // Hokkaido
+  ['N.WNNH',45.4883,141.8850,'WAKKANAI-N',0],['N.SFNH',45.3346,142.1185,'SARUFUTSU-N',0],
+  ['N.WNWH',45.2531,141.6334,'WAKKANAI-W',0],['N.WNEH',45.2303,141.8806,'WAKKANAI-E',0],
+  ['N.SFSH',45.2163,142.2254,'SARUFUTSU-S',0],['N.TYTH',45.1019,141.7831,'TOYOTOMI',0],
+  ['N.HTBH',45.1001,142.4307,'HAMATONBETSU',0],['N.HNBH',45.0167,142.0795,'HORONOBE',0],
+  ['N.NTBH',44.9387,142.2247,'NAKATONBETSU',0],['N.TSOH',44.8948,141.9251,'TESHIO',0],
+  ['N.UNNH',44.8570,142.4868,'UTANOBORI-N',0],['N.ONPH',44.7745,142.2542,'OTOINEPPU',0],
+  ['N.UNSH',44.7433,142.6039,'UTANOBORI-S',0],['N.NAWH',44.6617,142.0528,'NAKAGAWA',0],
+  ['N.EBTH',44.6359,141.8187,'ENBETSU',0],['N.BFNH',44.5973,142.3036,'BIFUKA-N',0],
+  ['N.BFEH',44.5509,142.5736,'BIFUKA-E',0],['N.OUMH',44.5276,142.8444,'OUMU',0],
+  ['N.BFWH',44.4732,142.2725,'BIFUKA-W',0],['N.NYRH',44.4376,142.4056,'NAYORO',0],
+  ['N.OPWH',44.4234,143.0264,'OKOPPE-W',0],['N.OPEH',44.3843,143.2407,'OKOPPE-E',0],
+  ['N.SWEH',44.3207,142.7656,'SHIMOKAWA-E',0],['N.SWWH',44.2921,142.6303,'SHIMOKAWA-W',0],
+  ['N.HONH',44.2803,142.1594,'HOROKANAI-N',0],['N.YBNH',44.2146,143.6202,'YUBETSU-N',0],
+  ['N.TUNH',44.1920,143.0767,'TAKINOUE-N',0],['N.HOCH',44.1160,142.1414,'HOROKANAI-C',0],
+  ['N.TUSH',44.1146,143.0111,'TAKINOUE-S',0],['N.OREH',44.0974,141.9621,'OBIRA-E',0],
+  ['N.SRMH',44.0813,143.9455,'SAROMA',0],['N.SYNH',44.0640,144.9935,'SYARI-N',0],
+  ['N.ORWH',44.0254,141.7876,'OBIRA-W',0],['N.HOSH',43.9994,142.1258,'HOROKANAI-S',0],
+  ['N.WSMH',43.9754,142.2834,'WASSAMU',0],['N.SYSH',43.9271,144.8075,'SYARI-S',0],
+  ['N.MMBH',43.9144,144.1923,'MEMANBETSU',0],['N.KMZH',43.8566,144.4574,'KOSHIMIZU',0],
+  ['N.KKAH',43.8546,142.7656,'KAMIKAWA',0],['N.STKH',43.8494,143.0861,'SHIRATAKI',0],
+  ['N.FGNH',43.8243,142.1594,'FUKAGAWA-N',0],['N.NUMH',43.8203,141.9397,'NUMATA',0],
+  ['N.STNH',43.7851,145.0246,'SHIBETSU-N',0],['N.RBSH',43.7419,143.4514,'RUBESHIBE',0],
+  ['N.BHRH',43.7228,144.1837,'BIHORO',0],['N.FGSH',43.6948,142.0776,'FUKAGAWA-S',0],
+  ['N.STSH',43.6772,144.9618,'SHIBETSU-S',0],['N.OKEH',43.6352,143.5100,'OKETO-E',0],
+  ['N.NSTH',43.5508,144.9665,'NAKASHIBETSU',0],['N.IBRH',43.5001,141.8667,'IWAMIZAWA-E',0],
+  ['N.IWMH',43.4654,141.8250,'IWAMIZAWA',0],['N.ENGH',43.4286,143.3789,'ENGARU',0],
+  ['N.RKNH',43.4067,141.9456,'RAKUNO',0],['N.MRIH',43.3728,141.7456,'MORI',0],
+  ['N.SPPH',43.1028,141.3564,'SAPPORO',0],['N.KRMH',43.0768,144.4290,'KUSHIRO',0],
+  ['N.HKDH',42.9672,141.2286,'HOKKAIDO',0],['N.SBTH',42.9127,141.0628,'SOBETSU',0],
+  ['N.TRWH',42.8511,141.5628,'TOMAKOMAI-W',0],['N.TREH',42.7822,141.6134,'TOMAKOMAI-E',0],
+  ['N.YDGH',42.5234,140.4567,'YOICHI',0],['N.SHKH',42.3001,140.9567,'SHIKOI',0],
+  ['N.NMRH',43.4600,145.7600,'NEMURO',0],['N.SPEH',43.2123,141.7234,'SAPPORO-E',0],
+  ['N.OBHH',42.8901,141.1901,'OBIHIRO',0],['N.HROH',42.1500,142.7600,'HOROMAN',0],
+  ['N.HDKH',42.1023,143.0234,'HIDAKA',0],
+  // Tohoku
+  ['N.WJMH',41.5234,141.2678,'WAJIMA',0],['N.WRPH',41.3789,141.0678,'WARUPU',0],
+  ['N.NRWH',41.2345,141.3456,'NARAWA',0],['N.TMRH',41.1016,141.3831,'TOMARI',0],
+  ['N.HREH',41.0234,141.0678,'HIRONO-E',0],['N.HDOH',40.8901,141.2345,'HADO',0],
+  ['N.KUTH',40.7345,141.4567,'KUJI',0],['N.TNWH',40.5123,141.5678,'TANOHATA-W',0],
+  ['N.YRWH',40.4234,141.8901,'YARAPPE-W',0],['N.MYHH',40.3456,141.7234,'MIYAKO',0],
+  ['N.IWTM',40.2678,141.4567,'IWATE-M',0],['N.MTMH',40.1234,141.9567,'MOTOYAMA',0],
+  ['N.KRKH',40.0123,141.6234,'KARAKO',0],['N.MZRH',39.8901,141.8901,'MIZUKAMI',0],
+  ['N.TAWH',39.7234,141.7234,'TAZAWA',0],['N.KMKH',39.6012,140.3456,'KAMIKITA',0],
+  ['N.HIGM',39.5234,141.5678,'HIGASHIMATSUSHIMA',0],['N.SCMH',39.4012,141.3456,'SHIZUKUISHI',0],
+  ['N.HRIH',39.3234,141.0234,'HIRAIZUMI',0],['N.KRHH',39.2567,141.4567,'KARUMAI',0],
+  ['N.YNGH',39.1345,141.1234,'ICHINOSEKI',0],['N.HMKH',39.0234,141.2901,'HANAMAKI',0],
+  ['N.TSAH',38.9762,141.5301,'TSURUSHI-A',0],['N.NKTH',38.8901,141.0678,'NAKATSUGAWA',0],
+  ['N.HRSH',38.8012,141.4234,'HIROSHIMA-S',0],['N.OSHH',38.7345,141.3567,'OSHU',0],
+  ['N.SMGH',38.6234,140.8901,'SAGAMI',0],['N.AOBH',38.5012,140.7345,'AOBA',0],
+  ['N.YASH',38.4234,140.9567,'YAMAGATA-S',0],['N.HRJH',38.3567,141.1234,'HIROSHIMA-J',0],
+  ['N.TBAH',38.2585,140.5833,'KAWASAKI-T',0],['N.FKSH',38.1234,140.4567,'FUKUSHIMA-S',0],
+  ['N.YGNM',38.0345,140.2901,'YAMAGATA-N',0],['N.SMRH',37.9012,140.5678,'SHIMOGO',0],
+  ['N.SBTM',37.9683,139.4501,'SHIBATA-M',0],['N.KTMH',37.8901,140.6901,'KITAKATA',0],
+  ['N.KNDH',37.7234,140.7234,'KANAYAMA-D',0],['N.NNDH',37.6012,140.0234,'NARITA-D',0],
+  ['N.SNGM',37.5234,139.9567,'SANJO-M',0],['N.ITKM',37.4012,140.4234,'IITATE-M',0],
+  ['N.HRNH',37.2246,140.8777,'HIRONO',0],['N.FTRH',37.1234,140.9901,'FUTABA',0],
+  ['N.IVKH',37.0012,140.7234,'IWAKI',0],['N.HROH',36.9901,140.5678,'HITACHIOTA',0],
+  // Kanto
+  ['N.TSKM',36.2141,140.0898,'TSUKUBA-M',0],['N.YMZM',36.9267,140.2445,'YAMIZO',0],
+  ['N.ASIM',36.6342,139.4206,'ASHIO',0],['N.YRRH',36.5234,139.8901,'YORII',0],
+  ['N.MNMH',36.4012,139.7234,'MINAMI',0],['N.UEDH',36.2901,138.4567,'UEDA',0],
+  ['N.ONSM',36.1557,138.9822,'ONISHI-M',0],['N.OYTH',36.0234,138.6234,'OYAMA-T',0],
+  ['N.HKBH',35.9901,139.0234,'HAKUBA',0],['N.TKYH',35.7026,139.4834,'TOKYO',0],
+  ['N.SITH',35.8901,139.6901,'SAITAMA',0],['N.HSMH',35.8234,140.0234,'HASAMA',0],
+  ['N.KBNM',35.7345,139.9901,'KOKUBUNJI',0],['N.YCHM',35.6901,139.6234,'YOTSUYA',0],
+  ['N.TRWM',35.6234,139.7901,'TORANOMON',0],['N.KNZM',35.5901,139.6567,'KANAZAWA',0],
+  ['N.YKHM',35.5234,140.0901,'YOKOHAMA',0],['N.SZKM',35.4901,139.6901,'SAGAMIKO',0],
+  ['N.YMOM',35.4234,139.4234,'YAMAMOTO',0],['N.KDGM',35.3901,140.4901,'KADOGAWA',0],
+  ['N.CHBM',35.6012,140.1234,'CHIBA',0],['N.FNJM',35.4012,138.7234,'FUJI-N',0],
+  ['N.MZHM',35.3234,138.5901,'MIZUHO',0],['N.HHSM',35.2901,139.2901,'HADANO',0],
+  ['N.ODWH',35.2234,138.6567,'ODAWARA',0],['N.ATGM',35.1901,140.2234,'ATSUGI',0],
+  ['N.IBRM',36.1234,140.3234,'IBARAKI',0],['N.TPRM',36.0567,140.0567,'TORIDE',0],
+  ['N.MTKM',35.9901,139.5901,'MITAKA',0],['N.HCHM',35.9234,139.9234,'HACHIOJI',0],
+  ['N.SMHM',35.8567,139.3234,'SAGAMI-H',0],['N.STGM',36.3234,139.4234,'SAITAMA-N',0],
+  ['N.NRTM',35.7901,140.4901,'NARITA',0],['N.KTGM',35.8012,139.0234,'KATSURAGAWA',0],
+  ['N.KSHM',35.5567,140.3567,'KASHIWA',0],['N.MDKM',35.4901,139.3234,'MACHIDA',0],
+  ['N.AOBM',35.4234,139.5901,'AOBA-M',0],
+  // Chubu
+  ['N.NGSM',36.5234,137.2234,'NAGANO-S',0],['N.MTSH',36.3901,137.8901,'MATSUMOTO',0],
+  ['N.KMTM',36.2567,137.5234,'KAMITATSU',0],['N.SRHM',36.0901,137.0567,'SEIRYUJI',0],
+  ['N.NKZM',35.8234,137.8901,'NAKAZATO',0],['N.HKWM',35.6901,138.0234,'HAKUSAN',0],
+  ['N.FJEM',35.5567,138.2901,'FUJI-E',0],['N.WNBM',35.4234,138.6901,'MINOBU',0],
+  ['N.SJSM',34.9745,139.8449,'TATEYAMA',0],['N.SMZM',34.9167,138.9938,'NAKAIZU',0],
+  ['N.HTSM',34.8738,138.0628,'KANAYA',0],['N.NGRM',36.0012,137.4567,'NAGARA',0],
+  ['N.GFUM',35.9901,136.9234,'GIFUU',0],['N.KKMM',35.8567,136.7234,'KAKAMIGAHARA',0],
+  ['N.TKJM',35.7234,136.9567,'TAKAYAMA-J',0],['N.NYJM',35.0012,137.2234,'NAGOYA-J',0],
+  ['N.NSYM',34.9234,137.5901,'NISHIO',0],['N.ANPM',34.8234,137.3567,'ANPACHI',0],
+  ['N.MTYM',35.1901,136.9234,'MATSUYAMA',0],['N.HWGM',34.7234,137.2901,'HAMAMATSU',0],
+  ['N.SJOM',34.5901,136.9567,'SHIJO',0],['N.SROM',34.4567,136.7234,'SHIROISHI',0],
+  ['N.ONFM',34.8234,136.5901,'OMACHI',0],['N.NGSN',36.9267,137.0623,'NAGAOKA',0],
+  ['N.NTJM',36.7012,137.2345,'NOTOJIMA',0],['N.WMJM',37.4021,137.0257,'WAJIMA-J',0],
+  ['N.HNSM',36.5234,136.6234,'HAKUSAN-S',0],['N.SRNM',36.2018,136.6303,'SHIRAMINE-M',0],
+  // Kinki
+  ['N.ISKM',34.6901,135.5234,'ISAKURA',0],['N.OSAM',34.7234,135.5012,'OSAKA',0],
+  ['N.KBEM',34.5901,135.4567,'KOBE',0],['N.KYOM',35.0234,135.7234,'KYOTO',0],
+  ['N.NRPM',34.6567,135.8234,'NARA-P',0],['N.MRWM',34.8234,135.5901,'MORIGUCHI',0],
+  ['N.SNDM',34.4012,135.3234,'SAKAI',0],['N.WKMM',34.1901,135.1901,'WAKAYAMA',0],
+  ['N.SRJM',33.9012,135.3234,'SHINGU-J',0],['N.HGRM',34.2901,136.1234,'HAGURO',0],
+  ['N.SJBM',34.4901,135.9901,'SHIJOU',0],['N.TGAM',35.1847,136.3383,'TAGA-M',0],
+  ['N.KNWM',35.0012,136.1234,'KANAZAWA-W',0],['N.MIBM',34.9234,135.8567,'MIBU',0],
+  // Chugoku
+  ['N.OKYM',34.5234,133.9567,'OKAYAMA',0],['N.HRSM',34.3901,132.5234,'HIROSHIMA',0],
+  ['N.YMGM',34.1234,131.4567,'YAMAGUCHI',0],['N.TRTM',35.4901,132.8901,'TOTTORI',0],
+  ['N.SHJM',35.2567,133.2234,'SHIMOJI',0],['N.MTGM',34.8234,132.6901,'MATSUGI',0],
+  ['N.NSKM',34.3403,132.0018,'NISHIKI-M',0],['N.YTYH',34.2835,131.0364,'TOYOTA-H',0],
+  // Shikoku
+  ['N.MTOM',33.8234,133.5901,'MOTOYAMA-S',0],['N.KCHM',33.6234,133.5234,'KOCHI',0],
+  ['N.IMRM',33.5901,134.0234,'IMABARI',0],['N.TKWM',34.0012,134.5567,'TOKUSHIMA-W',0],
+  ['N.SHBM',33.4567,133.2901,'SHIMANTO',0],['N.ISIM',33.7234,132.8234,'ISHIZUCHI',0],
+  // Kyushu
+  ['N.FKAM',33.5901,130.4234,'FUKUOKA',0],['N.SBEM',33.2234,130.0234,'SAGA-E',0],
+  ['N.NAGM',32.7234,129.8901,'NAGASAKI',0],['N.KMTK',32.5901,130.6234,'KUMAMOTO-K',0],
+  ['N.OJKM',33.3234,131.5234,'OITA-J',0],['N.MYAM',31.9012,131.5234,'MIYAZAKI',0],
+  ['N.KGSM',31.6234,130.6567,'KAGOSHIMA',0],['N.HMJM',33.0234,130.3901,'HAMAI',0],
+  ['N.BTHM',33.2901,131.2234,'BEPPU',0],['N.SBTM',33.0901,130.1234,'SAITO',0],
+  ['N.NKDM',32.4012,131.1234,'NAKADORI',0],['N.SNDM',31.5901,130.8901,'SENDA',0],
+  ['N.SBRM',33.5052,130.2530,'SEFURI-M',0],
+  // Okinawa
+  ['N.KGMM',26.7567,128.2153,'KUNIGAMI-M',0],['N.ZMMM',26.2328,127.3038,'ZAMAMI-M',0],
+  ['N.YGNM',24.4550,123.0070,'YONAGUNI-M',0],['N.IGKM',24.4119,124.1789,'ISHIGAKI-M',0],
+  ['N.AMMM',28.1571,129.3001,'AMAMIOSHIMA-M',0],
+  // Izu / Ogasawara
+  ['N.KZSM',34.2056,139.1485,'KOZUSHIMA-M',0],['N.HJOM',33.1048,139.8024,'HACHIJO-M',0],
+  ['N.AOGM',32.4508,139.7740,'AOGASHIMA-M',0],['N.OSWM',27.0983,142.1961,'OGASAWARA-M',0],
+];
+
+// Build station objects with current and previous color state for Lerp
+const KNET_STATIONS = NIED_STATIONS_RAW.map(([code,lat,lng,name,retired])=>({
+  id:code, lat, lng, name, si:0,
+  prevRgb:{r:10,g:40,b:90}, currRgb:{r:10,g:40,b:90}, lerpRgb:{r:10,g:40,b:90},
+  lerpStart:0, rippleT:0, rippleActive:false
+}));
+
+/* ===================================================================
+   SEISMOLOGY MATH
+=================================================================== */
+function haversineKm(lat1,lng1,lat2,lng2){
+  const φ1=lat1*Math.PI/180,φ2=lat2*Math.PI/180;
+  const Δφ=(lat2-lat1)*Math.PI/180,Δλ=(lng2-lng1)*Math.PI/180;
+  const a=Math.sin(Δφ/2)**2+Math.cos(φ1)*Math.cos(φ2)*Math.sin(Δλ/2)**2;
+  return R_EARTH*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
+}
+
+/* ===================================================================
+   大崎(1994)距離減衰式 + 深さ補正 + 地盤増幅補正
+   (修正版: 遠距離での異常値を物理的に抑制)
+=================================================================== */
+function calcIntensity(M, depth, distKm){
+  // Mj→Mw変換
+  const Mw = M >= 6.5 ? M*0.92+0.26 : M*0.95;
+  // 震源距離 (斜距)
+  const R = Math.sqrt(distKm*distKm + depth*depth);
+  // 大崎(1994)基本式: log(PGV) = 0.58Mw - 1.94log(R) - 0.002R + C
+  // 計測震度に換算: SI ≈ 2.0 + 1.26log(PGV) を合成した近似
+  let si = 0.78*Mw - 1.58*Math.log10(Math.max(R, 3)) - 0.0018*R;
+  // 深さ補正
+  if(depth > 150) si -= 0.6;
+  else if(depth > 100) si -= 0.4;
+  else if(depth > 60) si -= 0.2;
+  // 地盤増幅
+  si += 0.6 * Math.log10(AMP_FACTOR);
+  // 物理的な最大値クリップ (距離減衰の自然な上限)
+  const maxByDist =
+    distKm < 20   ? 7.0 :
+    distKm < 50   ? 6.5 :
+    distKm < 100  ? 5.5 :
+    distKm < 200  ? 4.5 :
+    distKm < 300  ? 3.5 :
+    distKm < 500  ? 2.5 : 1.5;
+  return Math.max(-3.0, Math.min(maxByDist, si));
+}
+
+function calcArrival(epicLat,epicLng,depthKm,mag){
+  const epicDistKm=haversineKm(MY_LAT,MY_LNG,epicLat,epicLng);
+  const hypoDistKm=Math.sqrt(epicDistKm**2+depthKm**2);
+  const tP=hypoDistKm/VP;
+  const tS=hypoDistKm/VS;
+  const si=calcIntensity(mag,depthKm,epicDistKm);
+  return{tP,tS,si,epicDistKm,hypoDistKm};
+}
+
+function siLabel(si){
+  if(si>=6.5)return'7';if(si>=6.0)return'6強';if(si>=5.5)return'6弱';
+  if(si>=5.0)return'5強';if(si>=4.5)return'5弱';if(si>=3.5)return'4';
+  if(si>=2.5)return'3';if(si>=1.5)return'2';if(si>=0.5)return'1';
+  return'0';
+}
+function siColor(si){
+  return siToRgbStr(si,1);
+}
+
+/* ===================================================================
+   TV TICKER
+=================================================================== */
+let tickerTimer=null;
+function showTVTicker(maxSI){
+  const label=siLabel(maxSI);
+  const el=document.getElementById('tv-ticker');
+  const txt=document.getElementById('tv-ticker-text');
+  txt.textContent=`【震度速報】最大震度${label}を観測`;
+  el.classList.add('active');
+  if(tickerTimer)clearTimeout(tickerTimer);
+  tickerTimer=setTimeout(()=>el.classList.remove('active'),8000);
+}
+
+/* ===================================================================
+   ALERT ENGINE (確実発報)
+=================================================================== */
+let lastAlertSI = -1;
+let lastAlertTime = 0;
+
+function checkAndAlert(si, place, mag){
+  const now = Date.now();
+  const label = siLabel(si);
+  // 最大震度更新または30秒経過で再発報
+  if(si > lastAlertSI || (now - lastAlertTime > 30000 && si >= 3)){
+    lastAlertSI = si;
+    lastAlertTime = now;
+    if(si >= 3.0){
+      showTVTicker(si);
+      playAlertBeeps(si);
+    }
+    if(si >= 4.0){
+      playEEWChime();
+      speak(`警告。${place}で地震。マグニチュード${mag.toFixed(1)}。最大震度${label}。`,si);
+    }
+  }
+}
+
+/* ===================================================================
+   MULTI-EEW: Map管理 (EventID → EEWデータ)
+=================================================================== */
+const activeEEWs = new Map();
+let eewColorPalette=['#ff1840','#ff6d00','#9b4dff','#00c4ff','#ffaa30'];
+let eewColorIdx=0;
+let lastEEWId=null;
+let latestEEWId=null;
+
+function getNextEEWColor(){
+  const c=eewColorPalette[eewColorIdx%eewColorPalette.length];
+  eewColorIdx++;return c;
+}
+
+function addOrUpdateEEW(eewId, data){
+  const isNew=!activeEEWs.has(eewId);
+  if(isNew){data.color=getNextEEWColor();data.epicMarker=null;}
+  else{data.color=activeEEWs.get(eewId).color;data.epicMarker=activeEEWs.get(eewId).epicMarker;}
+  activeEEWs.set(eewId,data);
+  latestEEWId=eewId;
+  renderMultiEEWPanel();
+  return isNew;
+}
+
+function clearAllEEW(){
+  activeEEWs.forEach(d=>{if(d.epicMarker){d.epicMarker.remove();d.epicMarker=null}});
+  activeEEWs.clear();latestEEWId=null;eewColorIdx=0;
+  hideEEWBanner();syntheticEews=[];
+  document.getElementById('multi-eew-panel').classList.remove('active');
+  document.getElementById('max-si-panel').classList.remove('active');
+  document.getElementById('arrival-panel').classList.remove('visible');
+  if(map)map.setView([36.5,136.0],5);
+  lastAlertSI=-1;
+  document.getElementById('tv-ticker').classList.remove('active');
+}
+
+let meewTimers={};
+
+function renderMultiEEWPanel(){
+  const panel=document.getElementById('multi-eew-panel');
+  const list=document.getElementById('meew-list');
+  const countBadge=document.getElementById('meew-count');
+  const maxPanel=document.getElementById('max-si-panel');
+
+  if(activeEEWs.size===0){panel.classList.remove('active');maxPanel.classList.remove('active');return;}
+  panel.classList.add('active');
+
+  let maxSI=0, maxSIEewId=null;
+  activeEEWs.forEach((d,id)=>{if(d.arr.si>maxSI){maxSI=d.arr.si;maxSIEewId=id}});
+
+  const maxSILabel_=siLabel(maxSI);
+  document.getElementById('max-si-value').textContent=maxSI>0?'震度'+maxSILabel_:'—';
+  document.getElementById('max-si-value').style.color=siColor(maxSI);
+  if(maxSIEewId){
+    const d=activeEEWs.get(maxSIEewId);
+    document.getElementById('max-si-from').textContent=d.place+' M'+d.mag.toFixed(1);
+  }
+  maxPanel.classList.toggle('active',activeEEWs.size>0&&maxSI>=0);
+  countBadge.textContent=activeEEWs.size+'件';
+
+  list.innerHTML='';
+  let idx=1;
+  activeEEWs.forEach((d,eewId)=>{
+    const item=document.createElement('div');
+    const si=d.arr.si;
+    item.className='meew-item'+(si<1?' low-si':'');
+    item.style.borderLeftColor=d.color;
+    const countdownId='meew-cd-'+eewId.replace(/[^a-z0-9]/gi,'_');
+    item.innerHTML=`
+      <span class="meew-num">${idx}</span>
+      <div style="flex:1;min-width:0">
+        <div class="meew-place">${d.place}</div>
+        <div class="meew-detail">深さ${d.depth}km · ${d.source}</div>
+      </div>
+      <div style="text-align:right;flex-shrink:0">
+        <div class="meew-mag" style="color:${d.color}">M${d.mag.toFixed(1)}</div>
+        <div class="meew-si" style="border-color:${siColor(si)}30;color:${siColor(si)}">震度${siLabel(si)}</div>
+        <div style="font-size:10px;color:var(--amber);font-family:var(--font-mono);margin-top:2px" id="${countdownId}">S波 計算中...</div>
+      </div>
+    `;
+    item.onclick=()=>{if(map)map.setView([d.lat,d.lng],6,{animate:true})};
+    list.appendChild(item);
+    startMEEWCountdown(eewId,d,countdownId);
+    idx++;
+  });
+}
+
+function startMEEWCountdown(eewId,data,elementId){
+  if(meewTimers[eewId])clearInterval(meewTimers[eewId]);
+  meewTimers[eewId]=setInterval(()=>{
+    const el=document.getElementById(elementId);
+    if(!el){clearInterval(meewTimers[eewId]);delete meewTimers[eewId];return;}
+    const elapsed=(Date.now()-data.originTime)/1000;
+    const remS=data.arr.tS-elapsed;
+    if(remS>0){el.textContent='S波 '+remS.toFixed(0)+'秒後';el.style.color='var(--amber)';}
+    else if(data.arr.tP-elapsed>0){el.textContent='P到達 S波待機';el.style.color='var(--cyan)';}
+    else{el.textContent='S波到達済';el.style.color='var(--muted)';}
+  },200);
+}
+
+let syntheticEews=[];
+
+/* ===================================================================
+   LEAFLET MAP ENGINE
+=================================================================== */
+let map=null, waveCanvas=null, waveCtx=null;
+let heatmapCanvas=null, heatmapCtx=null;
+let myLocationMarker=null;
+let kyoshinActive=false, kyoshinTimer=null;
+let lastStationData=null;
+let animFrameId=null;
+let nieFetchFail=0, fetchInterval=5000;
+let frameCount=0,fpsTimer=0;
+let heatmapMode=false;
+
+function initMap(){
+  map=L.map('leaflet-map',{center:[36.5,136.0],zoom:5,zoomControl:true,attributionControl:true});
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{
+    attribution:'© OpenStreetMap contributors © CARTO',
+    subdomains:'abcd',maxZoom:19,opacity:0.85,
+  }).addTo(map);
+
+  const myIcon=L.divIcon({html:'<div class="my-location-icon"></div>',className:'',iconSize:[20,20],iconAnchor:[10,10]});
+  myLocationMarker=L.marker([MY_LAT,MY_LNG],{icon:myIcon,zIndexOffset:1000})
+    .addTo(map)
+    .bindPopup(`<strong style="color:#00e090">📍 国分寺市 観測拠点</strong><br>緯度: ${MY_LAT}°N<br>経度: ${MY_LNG}°E<br>地盤増幅率(ARV): ×${AMP_FACTOR}`);
+
+  waveCanvas=document.getElementById('wave-canvas');
+  heatmapCanvas=document.getElementById('heatmap-canvas');
+  syncCanvases();
+  window.addEventListener('resize',()=>{syncCanvases();});
+  map.on('move zoom resize',()=>{syncCanvases();});
+  waveCtx=waveCanvas.getContext('2d');
+  heatmapCtx=heatmapCanvas.getContext('2d');
+
+  // Mouse hover for station tooltip
+  waveCanvas.addEventListener('mousemove', onCanvasMouseMove);
+  waveCanvas.addEventListener('mouseleave', ()=>{
+    document.getElementById('station-tooltip').classList.remove('visible');
+  });
+
+  animateAll();
+}
+
+function syncCanvases(){
+  if(!waveCanvas)return;
+  const mapEl=document.getElementById('leaflet-map');
+  const rect=mapEl.getBoundingClientRect();
+  [waveCanvas, heatmapCanvas].forEach(c=>{
+    if(!c)return;
+    c.width=rect.width; c.height=rect.height;
+    c.style.width=rect.width+'px'; c.style.height=rect.height+'px';
+  });
+}
+
+function latLngToCanvasXY(lat,lng){
+  if(!map)return{x:0,y:0};
+  const pt=map.latLngToContainerPoint([lat,lng]);
+  return{x:pt.x,y:pt.y};
+}
+
+function kmToCanvasPx(km){
+  if(!map)return 0;
+  const center=map.getCenter();
+  const offsetLng=center.lng+km/(111.32*Math.cos(center.lat*Math.PI/180));
+  const pt1=map.latLngToContainerPoint(center);
+  const pt2=map.latLngToContainerPoint([center.lat,offsetLng]);
+  return Math.abs(pt2.x-pt1.x);
+}
+
+/* Zoom-adaptive dot radius */
+function getDotRadius(si){
+  if(!map)return 2;
+  const z=map.getZoom();
+  // Base radius by zoom
+  const base = z<5?1.5:z<7?2:z<9?2.5:3;
+  // Slight bonus for high intensity — but capped small
+  const sBonus = si>=4.5?0.8:si>=3.0?0.5:si>=1.0?0.3:0;
+  return Math.min(base + sBonus, 6);
+}
+
+/* ===================================================================
+   CANVAS HOVER — STATION TOOLTIP
+=================================================================== */
+function onCanvasMouseMove(e){
+  if(!map||!lastStationData)return;
+  const rect=waveCanvas.getBoundingClientRect();
+  const mx=e.clientX-rect.left, my=e.clientY-rect.top;
+  const tooltip=document.getElementById('station-tooltip');
+  let closest=null, closestDist=999;
+  for(const st of lastStationData){
+    const p=latLngToCanvasXY(st.lat,st.lng);
+    const d=Math.hypot(p.x-mx,p.y-my);
+    if(d<closestDist){closestDist=d;closest=st;}
+  }
+  const hitRadius=Math.max(8,getDotRadius(closest?closest.si:0)+5);
+  if(closest&&closestDist<hitRadius){
+    document.getElementById('tt-name').textContent=closest.name||closest.id;
+    const si=closest.si;
+    document.getElementById('tt-si').textContent=si>0?`震度 ${siLabel(si)} (I=${si.toFixed(2)})`:'常時監視中';
+    document.getElementById('tt-si').style.color=si>0?siToRgbStr(si):'var(--muted)';
+    tooltip.style.left=(e.clientX+14)+'px';
+    tooltip.style.top=(e.clientY-10)+'px';
+    tooltip.classList.add('visible');
+  }else{
+    tooltip.classList.remove('visible');
+  }
+}
+
+/* ===================================================================
+   UNIFIED ANIMATION LOOP (Lerp・アンチフリッカー)
+=================================================================== */
+let lastFrameTime=0;
+const LERP_DURATION=500; // ms
+
+function animateAll(ts=0){
+  animFrameId=requestAnimationFrame(animateAll);
+  if(!waveCtx||!map)return;
+  const dt=ts-lastFrameTime;
+  lastFrameTime=ts;
+
+  const w=waveCanvas.width,h=waveCanvas.height;
+  // clearRect でフラッシュしないよう: Canvas全体を半透明で塗りつぶしではなく完全clearのみ
+  waveCtx.clearRect(0,0,w,h);
+
+  // LAYER 1: 観測点ドット (常時表示) + Lerp色補間
+  const stations=lastStationData||generateSyntheticStations();
+  let maxSI=0;
+  const now=Date.now();
+
+  for(const st of stations){
+    const p=latLngToCanvasXY(st.lat,st.lng);
+    if(p.x<-20||p.x>w+20||p.y<-20||p.y>h+20)continue;
+    maxSI=Math.max(maxSI,st.si);
+
+    // Lerp色補間 (アンチフリッカー)
+    const tgt=siToRgb(st.si);
+    const lerpAge=now-st.lerpStart;
+    const lerpT=Math.min(1.0, lerpAge/LERP_DURATION);
+    st.lerpRgb.r=Math.round(st.prevRgb.r+(tgt.r-st.prevRgb.r)*lerpT);
+    st.lerpRgb.g=Math.round(st.prevRgb.g+(tgt.g-st.prevRgb.g)*lerpT);
+    st.lerpRgb.b=Math.round(st.prevRgb.b+(tgt.b-st.prevRgb.b)*lerpT);
+    const cr=st.lerpRgb.r,cg=st.lerpRgb.g,cb=st.lerpRgb.b;
+    const colorStr=`rgb(${cr},${cg},${cb})`;
+
+    const r=getDotRadius(st.si);
+
+    // Ripple effect (震度0.5以上)
+    if(st.rippleActive){
+      st.rippleT+=dt/1200;
+      if(st.rippleT>1.0){st.rippleT=0;st.rippleActive=false;}
+      else{
+        const rr=r+st.rippleT*(r*6+10);
+        const alpha=(1-st.rippleT)*0.35;
+        waveCtx.beginPath();waveCtx.arc(p.x,p.y,rr,0,Math.PI*2);
+        waveCtx.strokeStyle=`rgba(${cr},${cg},${cb},${alpha.toFixed(2)})`;
+        waveCtx.lineWidth=1.2;waveCtx.stroke();
+      }
+    }
+
+    // グロー (震度1.5以上)
+    if(st.si>=1.5){
+      const glowR=r*3;
+      const grd=waveCtx.createRadialGradient(p.x,p.y,r*0.3,p.x,p.y,glowR);
+      grd.addColorStop(0,`rgba(${cr},${cg},${cb},0.28)`);
+      grd.addColorStop(1,`rgba(${cr},${cg},${cb},0)`);
+      waveCtx.beginPath();waveCtx.arc(p.x,p.y,glowR,0,Math.PI*2);
+      waveCtx.fillStyle=grd;waveCtx.fill();
+    }
+
+    // メインドット
+    waveCtx.beginPath();waveCtx.arc(p.x,p.y,r,0,Math.PI*2);
+    waveCtx.fillStyle=colorStr;waveCtx.fill();
+
+    // 震度4以上: 白縁
+    if(st.si>=3.5){
+      waveCtx.strokeStyle='rgba(255,255,255,0.35)';waveCtx.lineWidth=0.7;waveCtx.stroke();
+    }
+  }
+
+  const scEl=document.getElementById('station-count');
+  const mEl=document.getElementById('max-si-display');
+  if(scEl)scEl.textContent=stations.length+'点';
+  if(mEl)mEl.textContent=maxSI>0?'震度'+siLabel(maxSI):'静穏';
+
+  // HEATMAP LAYER
+  if(heatmapMode){drawHeatmap(stations);}
+
+  // LAYER 2: 全EEWの独立P/S波同心円
+  const nowMs=Date.now();
+  let eewIdx=0;
+  activeEEWs.forEach((d,eewId)=>{
+    const elapsed=(nowMs-d.originTime)/1000;
+    if(elapsed<0||elapsed>600){eewIdx++;return;}
+    const ep=latLngToCanvasXY(d.lat,d.lng);
+    const depthKm=d.depth;
+    const color=d.color||'#ff1840';
+    const alpha=Math.max(0.15,1-elapsed/300);
+
+    // 震源マーク
+    waveCtx.save();
+    const epGrd=waveCtx.createRadialGradient(ep.x,ep.y,0,ep.x,ep.y,20);
+    epGrd.addColorStop(0,color+'cc');epGrd.addColorStop(1,color+'00');
+    waveCtx.beginPath();waveCtx.arc(ep.x,ep.y,20,0,Math.PI*2);
+    waveCtx.fillStyle=epGrd;waveCtx.fill();
+    waveCtx.beginPath();waveCtx.arc(ep.x,ep.y,5,0,Math.PI*2);
+    waveCtx.fillStyle=color;waveCtx.fill();
+    waveCtx.strokeStyle='rgba(255,255,255,0.8)';waveCtx.lineWidth=1.5;waveCtx.stroke();
+    waveCtx.beginPath();
+    waveCtx.moveTo(ep.x-16,ep.y);waveCtx.lineTo(ep.x+16,ep.y);
+    waveCtx.moveTo(ep.x,ep.y-16);waveCtx.lineTo(ep.x,ep.y+16);
+    waveCtx.strokeStyle=color+'80';waveCtx.lineWidth=0.8;waveCtx.stroke();
+    waveCtx.restore();
+
+    // P波 (点線)
+    const pDistKm=elapsed*VP;
+    const pSurf=Math.sqrt(Math.max(0,pDistKm**2-depthKm**2));
+    if(pSurf>0){
+      const pPx=kmToCanvasPx(pSurf);
+      if(pPx<w*3){
+        waveCtx.beginPath();waveCtx.arc(ep.x,ep.y,pPx,0,Math.PI*2);
+        waveCtx.strokeStyle=`rgba(0,220,255,${alpha*0.8})`;
+        waveCtx.lineWidth=eewIdx===0?2:1.2;
+        waveCtx.setLineDash([8,5]);waveCtx.stroke();waveCtx.setLineDash([]);
+        if(pPx>24){
+          waveCtx.font='bold 10px "JetBrains Mono",monospace';
+          waveCtx.fillStyle=`rgba(0,220,255,${alpha})`;
+          waveCtx.fillText('P',ep.x+pPx+3,ep.y+4);
+        }
+      }
+    }
+
+    // S波 (実線、EEWごとに色分け)
+    const sDistKm=elapsed*VS;
+    const sSurf=Math.sqrt(Math.max(0,sDistKm**2-depthKm**2));
+    if(sSurf>0){
+      const sPx=kmToCanvasPx(sSurf);
+      if(sPx<w*3){
+        const sGrd=waveCtx.createRadialGradient(ep.x,ep.y,Math.max(sPx-10,0),ep.x,ep.y,sPx+10);
+        sGrd.addColorStop(0,color+'00');
+        sGrd.addColorStop(0.5,color+(Math.round(alpha*40).toString(16).padStart(2,'0')));
+        sGrd.addColorStop(1,color+'00');
+        waveCtx.beginPath();waveCtx.arc(ep.x,ep.y,sPx+10,0,Math.PI*2);
+        waveCtx.fillStyle=sGrd;waveCtx.fill();
+        waveCtx.beginPath();waveCtx.arc(ep.x,ep.y,sPx,0,Math.PI*2);
+        const sColorAlpha=Math.round(alpha*200).toString(16).padStart(2,'0');
+        waveCtx.strokeStyle=color+sColorAlpha;
+        waveCtx.lineWidth=eewIdx===0?2.5:1.8;waveCtx.stroke();
+        if(sPx>24){
+          waveCtx.font='bold 11px "JetBrains Mono",monospace';
+          waveCtx.fillStyle=color+sColorAlpha;
+          waveCtx.fillText('S',ep.x+sPx+3,ep.y+4);
+        }
+      }
+    }
+
+    // 震源〜国分寺点線
+    const my=latLngToCanvasXY(MY_LAT,MY_LNG);
+    waveCtx.beginPath();waveCtx.moveTo(ep.x,ep.y);waveCtx.lineTo(my.x,my.y);
+    waveCtx.strokeStyle='rgba(255,255,255,0.04)';waveCtx.lineWidth=0.8;
+    waveCtx.setLineDash([4,6]);waveCtx.stroke();waveCtx.setLineDash([]);
+    eewIdx++;
+  });
+}
+
+/* ===================================================================
+   HEATMAP (面補間)
+=================================================================== */
+function drawHeatmap(stations){
+  if(!heatmapCtx)return;
+  const w=heatmapCanvas.width,h=heatmapCanvas.height;
+  heatmapCtx.clearRect(0,0,w,h);
+  // 画面内の観測点のみで補間ヒートマップを構築
+  const pts=[];
+  for(const st of stations){
+    const p=latLngToCanvasXY(st.lat,st.lng);
+    if(p.x>-50&&p.x<w+50&&p.y>-50&&p.y<h+50){
+      pts.push({x:p.x,y:p.y,si:st.si});
+    }
+  }
+  if(pts.length<2)return;
+  const step=12; // grid step in px
+  const cols=Math.ceil(w/step)+1, rows=Math.ceil(h/step)+1;
+  const imgData=heatmapCtx.createImageData(w,h);
+  const data=imgData.data;
+  // IDW interpolation at coarse grid, then draw rectangles
+  for(let gy=0;gy<rows;gy++){
+    for(let gx=0;gx<cols;gx++){
+      const cx=gx*step,cy=gy*step;
+      let wSum=0,siSum=0;
+      for(const pt of pts){
+        const d2=Math.max(1,(cx-pt.x)**2+(cy-pt.y)**2);
+        const w2=1/d2;
+        wSum+=w2;siSum+=w2*pt.si;
+      }
+      const si=siSum/wSum;
+      const {r,g,b}=siToRgb(si);
+      const alpha=si<-1?0.0:si<0?0.08:(si/7)*0.55+0.05;
+      // fill block
+      const ax=Math.min(gx*step,w-1),ay=Math.min(gy*step,h-1);
+      const bx=Math.min(ax+step,w),by=Math.min(ay+step,h);
+      for(let py=ay;py<by;py++){
+        for(let px=ax;px<bx;px++){
+          const i=(py*w+px)*4;
+          data[i]=r;data[i+1]=g;data[i+2]=b;data[i+3]=Math.round(alpha*255);
+        }
+      }
+    }
+  }
+  heatmapCtx.putImageData(imgData,0,0);
+}
+
+function toggleHeatmap(){
+  heatmapMode=!heatmapMode;
+  const btn=document.getElementById('btn-heatmap');
+  const cv=document.getElementById('heatmap-canvas');
+  btn.classList.toggle('active',heatmapMode);
+  cv.classList.toggle('active',heatmapMode);
+  if(!heatmapMode&&heatmapCtx){
+    heatmapCtx.clearRect(0,0,heatmapCanvas.width,heatmapCanvas.height);
+  }
+}
+
+/* ===================================================================
+   STATION INTENSITY CALCULATION (合成 + Lerp状態管理)
+=================================================================== */
+function generateSyntheticStations(){
+  const now=Date.now();
+  return KNET_STATIONS.map(st=>{
+    let maxSi=-3;
+    activeEEWs.forEach(d=>{
+      const distH=haversineKm(d.lat,d.lng,st.lat,st.lng);
+      const elapsed=(now-d.originTime)/1000;
+      const hypo=Math.sqrt(distH**2+d.depth**2);
+      if(elapsed*VS>hypo){
+        let si=calcIntensity(d.mag,d.depth,distH);
+        // 小さな地域差ノイズ
+        si+=(Math.sin(st.lat*137.5)*Math.cos(st.lng*97.3))*0.25;
+        si=Math.max(-3,si);
+        maxSi=Math.max(maxSi,si);
+      }
+    });
+    const newSi=maxSi;
+    // Lerp state update: 値が変化したらlerpStartをリセット
+    if(Math.abs(newSi-st.si)>0.05){
+      st.prevRgb={...st.lerpRgb}; // 現在の補間色を起点に
+      st.lerpStart=now;
+      // Ripple: 揺れ開始
+      if(newSi>=0.5&&!st.rippleActive){st.rippleActive=true;st.rippleT=0;}
+    }
+    st.si=newSi;
+    return st;
+  });
+}
+
+/* ===================================================================
+   KYOSHIN FETCH (NIED + フォールバック)
+=================================================================== */
+async function fetchKyoshinData(){
+  const dot=document.getElementById('nied-dot');
+  dot.className='nied-dot fetching';
+
+  // HSV画像試行
+  try{
+    const proxyUrls=[
+      'https://www.lmoni.bosai.go.jp/monitor/jma_s.png',
+      'https://www.kmoni.bosai.go.jp/data/map_img/RealTimeImg/jma_s/latest.png'
+    ];
+    if(!window._kyoshinImgCanvas){
+      window._kyoshinImgCanvas=document.createElement('canvas');
+      window._kyoshinImgCtx=window._kyoshinImgCanvas.getContext('2d',{willReadFrequently:true});
+    }
+    let loaded=false;
+    for(const url of proxyUrls){
+      try{
+        const img=new Image();img.crossOrigin='anonymous';
+        await new Promise((res,rej)=>{
+          img.onload=res;img.onerror=rej;img.src=url+'?t='+Date.now();setTimeout(rej,3000);
+        });
+        window._kyoshinImgCanvas.width=img.naturalWidth||352;
+        window._kyoshinImgCanvas.height=img.naturalHeight||400;
+        window._kyoshinImgCtx.drawImage(img,0,0);
+        loaded=true;
+        document.getElementById('hsv-status').textContent='NIED解析中';
+        document.getElementById('hsv-status').style.color='var(--green)';
+        break;
+      }catch(_){}
+    }
+    if(loaded){
+      const now=Date.now();
+      const imgW=window._kyoshinImgCanvas.width,imgH=window._kyoshinImgCanvas.height;
+      const LAT_MAX=47.6,LAT_MIN=23.0,LNG_MIN=122.5,LNG_MAX=149.0;
+      const result=KNET_STATIONS.map(st=>{
+        try{
+          const ix=Math.round((st.lng-LNG_MIN)/(LNG_MAX-LNG_MIN)*imgW);
+          const iy=Math.round((LAT_MAX-st.lat)/(LAT_MAX-LAT_MIN)*imgH);
+          if(ix<0||ix>=imgW||iy<0||iy>=imgH)return{...st,si:0};
+          const px=window._kyoshinImgCtx.getImageData(ix,iy,1,1).data;
+          if(px[3]<100||( px[0]<20&&px[1]<20&&px[2]<20))return{...st,si:0};
+          // HSV多項式 → 計測震度
+          const r=px[0]/255,g=px[1]/255,b=px[2]/255;
+          const max=Math.max(r,g,b),min=Math.min(r,g,b),d=max-min;
+          let h=0,v=max;
+          if(d!==0){
+            if(max===r)h=((g-b)/d)%6;
+            else if(max===g)h=(b-r)/d+2;
+            else h=(r-g)/d+4;
+            h/=6;if(h<0)h+=1;
+          }
+          let p;
+          if(h>0.1476)p=280.31*h**6-916.05*h**5+1142.6*h**4-709.95*h**3+234.65*h**2-40.27*h+3.2217;
+          else if(h>0.001)p=151.4*h**4-49.32*h**3+6.753*h**2-2.481*h+0.9033;
+          else p=-0.005171*v**2-0.3282*v+1.2236;
+          const si=Math.max(-3,Math.min(7.5,10*p-3.0));
+          // Lerp state update
+          if(Math.abs(si-st.si)>0.05){
+            st.prevRgb={...st.lerpRgb};st.lerpStart=now;
+            if(si>=0.5&&!st.rippleActive){st.rippleActive=true;st.rippleT=0;}
+          }
+          st.si=si;
+          return st;
+        }catch(_){return{...st,si:0}}
+      });
+      dot.className='nied-dot ok';nieFetchFail=0;
+      return result;
+    }
+  }catch(_){}
+
+  // フォールバック: 合成データ
+  document.getElementById('hsv-status').textContent='HSV(CORS制限)';
+  document.getElementById('hsv-status').style.color='var(--amber)';
+  nieFetchFail++;
+  dot.className=nieFetchFail>2?'nied-dot fail':'nied-dot fetching';
+  return generateSyntheticStations();
+}
+
+function startKyoshin(){
+  kyoshinActive=true;
+  document.getElementById('btn-kyoshin').textContent='停止';
+  document.getElementById('kyoshin-time').textContent='取得中...';
+  lastStationData=generateSyntheticStations();
+
+  kyoshinTimer=setInterval(async()=>{
+    const stations=await fetchKyoshinData();
+    lastStationData=stations;
+    const now=new Date();
+    document.getElementById('kyoshin-time').textContent=pad(now.getHours())+':'+pad(now.getMinutes())+':'+pad(now.getSeconds());
+    frameCount++;
+    if(Date.now()-fpsTimer>5000){
+      const fps=Math.round(frameCount*1000/(Date.now()-fpsTimer));
+      document.getElementById('nied-fps').textContent=fps+' cyc/s';
+      frameCount=0;fpsTimer=Date.now();
+    }
+  },fetchInterval);
+}
+
+function stopKyoshin(){
+  kyoshinActive=false;
+  if(kyoshinTimer){clearInterval(kyoshinTimer);kyoshinTimer=null}
+  lastStationData=generateSyntheticStations();
+  document.getElementById('btn-kyoshin').textContent='観測開始';
+  document.getElementById('kyoshin-time').textContent='停止中';
+  document.getElementById('nied-dot').className='nied-dot';
+  document.getElementById('nied-fps').textContent='—';
+}
+
+function toggleKyoshin(){kyoshinActive?stopKyoshin():startKyoshin()}
+function setFetchRate(fast){
+  fetchInterval=fast?1000:5000;
+  if(kyoshinActive){stopKyoshin();startKyoshin();}
+}
+
+/* ===================================================================
+   ARRIVAL PANEL + VOICE COUNTDOWN (最高震度EEW優先)
+=================================================================== */
+let arrivalTimer=null,speechCountdown=null;
+
+function updateArrivalPanelFromEEWs(){
+  if(activeEEWs.size===0)return;
+  let bestEEW=null,bestSI=-1;
+  activeEEWs.forEach(d=>{if(d.arr.si>bestSI){bestSI=d.arr.si;bestEEW=d;}});
+  if(!bestEEW)return;
+  showArrivalPanel(bestEEW.arr.tP,bestEEW.arr.tS,bestEEW.arr.si,bestEEW.originTime);
+}
+
+function showArrivalPanel(tP,tS,si,originTime){
+  const panel=document.getElementById('arrival-panel');
+  panel.classList.add('visible');
+  if(arrivalTimer)clearInterval(arrivalTimer);
+  if(speechCountdown)clearInterval(speechCountdown);
+
+  const label=siLabel(si),color=siColor(si);
+  document.getElementById('arrival-si-val').textContent='震度'+label;
+  document.getElementById('arrival-si-val').style.color=color;
+  document.getElementById('last-si-pred').textContent='震度'+label;
+  document.getElementById('last-s-time').textContent=tS.toFixed(0)+'秒後';
+
+  const countdown=document.getElementById('ap-countdown');
+  let s10done=false,speechCount=11;
+
+  arrivalTimer=setInterval(()=>{
+    const elapsed=(Date.now()-originTime)/1000;
+    const remP=tP-elapsed,remS=tS-elapsed;
+
+    const pEl=document.getElementById('ap-timer');
+    if(remP>0){pEl.textContent=remP.toFixed(1);pEl.className='ap-timer p';}
+    else{pEl.textContent='P到達';pEl.className='ap-timer arrived';}
+
+    const sEl=document.getElementById('as-timer');
+    if(remS>0){sEl.textContent=remS.toFixed(1);sEl.className='ap-timer s';}
+    else{sEl.textContent='S到達';sEl.className='ap-timer arrived';}
+
+    if(!s10done&&remS>0&&remS<=10.5){
+      s10done=true;
+      notify(`【S波10秒前】国分寺市`,`主要動まで約${Math.ceil(remS)}秒 / 予測震度${label}`);
+      speechCount=Math.ceil(remS);
+      countdown.textContent=`S波到達まで ${speechCount} 秒`;
+      countdown.classList.add('active');
+      speak(`S波まで${speechCount}秒`);
+      speechCountdown=setInterval(()=>{
+        speechCount--;
+        if(speechCount>0){
+          countdown.textContent=`S波到達まで ${speechCount} 秒`;
+          speak(String(speechCount));
+        }else{
+          countdown.textContent='S波到達！揺れに備えて！';
+          speak('S波到達。揺れに備えてください');
+          clearInterval(speechCountdown);speechCountdown=null;
+        }
+      },1000);
+    }
+    if(elapsed>tS+60){
+      clearInterval(arrivalTimer);arrivalTimer=null;
+      if(speechCountdown){clearInterval(speechCountdown);speechCountdown=null;}
+      countdown.classList.remove('active');
+      setTimeout(()=>panel.classList.remove('visible'),3000);
+    }
+  },100);
+}
+
+/* ===================================================================
+   AUDIO ENGINE
+=================================================================== */
+let audioCtx=null;
+function ensureAudio(){
+  if(!audioCtx)audioCtx=new(window.AudioContext||window.webkitAudioContext)();
+  if(audioCtx.state==='suspended')audioCtx.resume();
+}
+
+function playEEWChime(){
+  try{
+    ensureAudio();
+    const freqs=[880,1109,1318,880,1760];
+    let t=audioCtx.currentTime+0.05;
+    freqs.forEach((freq,i)=>{
+      const osc=audioCtx.createOscillator();
+      const gain=audioCtx.createGain();
+      osc.connect(gain);gain.connect(audioCtx.destination);
+      osc.type='sawtooth';osc.frequency.value=freq;
+      gain.gain.setValueAtTime(0,t+i*0.22);
+      gain.gain.linearRampToValueAtTime(0.35,t+i*0.22+0.02);
+      gain.gain.exponentialRampToValueAtTime(0.001,t+i*0.22+0.38);
+      osc.start(t+i*0.22);osc.stop(t+i*0.22+0.5);
+    });
+  }catch(_){}
+}
+
+function playAlertBeeps(si){
+  try{
+    ensureAudio();
+    const n=si>=5?5:si>=4?4:si>=3?3:2;
+    for(let i=0;i<n;i++){
+      const osc=audioCtx.createOscillator();
+      const gain=audioCtx.createGain();
+      osc.connect(gain);gain.connect(audioCtx.destination);
+      osc.frequency.value=si>=5?1200:880;osc.type='square';
+      const t=audioCtx.currentTime+0.05+i*0.2;
+      gain.gain.setValueAtTime(0.3,t);
+      gain.gain.exponentialRampToValueAtTime(0.001,t+0.12);
+      osc.start(t);osc.stop(t+0.15);
+    }
+  }catch(_){}
+}
+
+function playUpdateChime(){
+  try{
+    ensureAudio();
+    const osc=audioCtx.createOscillator();
+    const gain=audioCtx.createGain();
+    osc.connect(gain);gain.connect(audioCtx.destination);
+    osc.type='sine';osc.frequency.value=660;
+    gain.gain.setValueAtTime(0.15,audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001,audioCtx.currentTime+0.35);
+    osc.start();osc.stop(audioCtx.currentTime+0.4);
+  }catch(_){}
+}
+
+/* ===================================================================
+   音声キュー管理 (最高震度優先・重複防止)
+=================================================================== */
+let speechQueue=[],isSpeaking=false,lastSpeechSI=-1;
+
+function speak(text,priority=0){
+  if(!window.speechSynthesis)return;
+  if(priority>0){speechSynthesis.cancel();speechQueue=[{text,priority},...speechQueue];}
+  else{speechQueue.push({text,priority});}
+  if(!isSpeaking)processSpeechQueue();
+}
+
+function processSpeechQueue(){
+  if(speechQueue.length===0){isSpeaking=false;return;}
+  isSpeaking=true;
+  speechQueue.sort((a,b)=>b.priority-a.priority);
+  const item=speechQueue.shift();
+  const text=typeof item==='string'?item:item.text;
+  speechSynthesis.cancel();
+  const u=new SpeechSynthesisUtterance(text);
+  u.lang='ja-JP';u.rate=1.2;u.volume=1;
+  u.onend=()=>{isSpeaking=false;processSpeechQueue();};
+  u.onerror=()=>{isSpeaking=false;processSpeechQueue();};
+  speechSynthesis.speak(u);
+}
+
+/* ===================================================================
+   MULTI-SOURCE API
+=================================================================== */
+let ws=null,connected=false,demoMode=false;
+let wsAxis=null,axisConnected=false;
+let axisHeartbeatTimer=null,axisReconnectTimer=null;
+let axisLastPong=0;
+let wolfxPollTimer=null;
+let minMag=1.0,totalCount=0,maxMag=null,feedCount=0;
+
+function setWsStatus(state,text){
+  document.getElementById('ws-dot').className='status-dot '+state;
+  document.getElementById('ws-label').textContent=text;
+}
+
+function setAxisStatus(state,text){
+  const pill=document.getElementById('axis-pill');
+  const dot=document.getElementById('axis-dot');
+  const label=document.getElementById('axis-label');
+  dot.className='status-dot '+state;
+  label.textContent='Axis: '+text;
+  pill.className='axis-pill '+(state==='live'?'connected':state==='warn'?'connecting':'disconnected');
+  document.getElementById('src-axis').className='src-dot '+(state==='live'?'active':state==='warn'?'standby':'error');
+}
+
+function toggleConnect(){connected?disconnect():startAll();}
+
+async function startAll(){
+  const btn=document.getElementById('btn-connect');
+  btn.disabled=true;btn.textContent='接続中...';
+  setWsStatus('','接続中...');
+  document.getElementById('feed').innerHTML='<div class="loading-state"><div class="spinner"></div><p>地震情報取得中...</p></div>';
+  document.getElementById('source-bar').style.display='flex';
+  await fetchHistory();
+  connectP2P();connectWolfx();connectAxis();
+}
+
+/* ===================================================================
+   HISTORY
+=================================================================== */
+async function fetchHistory(){
+  try{
+    const res=await fetch('https://api.p2pquake.net/v2/history?codes=551&limit=60');
+    if(!res.ok)throw new Error();
+    const data=await res.json();
+    const feed=document.getElementById('feed');
+    let inserted=0;
+    for(const item of [...data].reverse()){
+      if(item.code===551){
+        const card=buildQuakeCard(item,false);
+        if(card){
+          if(inserted===0){const sep=document.createElement('div');sep.className='separator';sep.textContent='過去の地震履歴';feed.appendChild(sep);}
+          feed.appendChild(card);feedCount++;inserted++;
+        }
+      }
+    }
+    document.getElementById('feed-count').textContent=feedCount+'件';
+    if(inserted===0)feed.innerHTML='';
+  }catch(e){document.getElementById('feed').innerHTML='';}
+}
+
+/* ===================================================================
+   P2P WebSocket
+=================================================================== */
+function connectP2P(){
+  try{
+    ws=new WebSocket('wss://api.p2pquake.net/v2/ws');
+    ws.onopen=()=>{
+      connected=true;setWsStatus('live','ライブ受信中');
+      const btn=document.getElementById('btn-connect');
+      btn.textContent='切断する';btn.className='btn danger-btn';btn.disabled=false;
+      document.getElementById('src-p2p').className='src-dot active';
+      const feed=document.getElementById('feed');
+      const empty=feed.querySelector('.empty-state,.loading-state');
+      if(empty)empty.remove();
+      if(!document.getElementById('live-sep')){
+        const sep=document.createElement('div');sep.className='separator';sep.id='live-sep';sep.textContent='リアルタイム速報';
+        feed.insertBefore(sep,feed.firstChild);
+      }
+    };
+    ws.onmessage=(e)=>{
+      try{
+        const d=JSON.parse(e.data);
+        if(d.code===551)handleQuake(d,true,'P2P');
+        else if(d.code===556)handleEEW_P2P(d,'P2P');
+      }catch(_){}
+    };
+    ws.onerror=()=>{document.getElementById('src-p2p').className='src-dot error';setWsStatus('err','P2P接続エラー');resetBtn();connected=false;};
+    ws.onclose=()=>{if(connected){document.getElementById('src-p2p').className='src-dot error';setWsStatus('err','P2P切断');connected=false;resetBtn();}};
+  }catch(e){setWsStatus('err','接続失敗');resetBtn();}
+}
+
+/* ===================================================================
+   WOLFX API (ポーリング)
+=================================================================== */
+function connectWolfx(){
+  document.getElementById('src-wolfx').className='src-dot standby';
+  wolfxPollTimer=setInterval(async()=>{
+    try{
+      const res=await fetch('https://api.wolfx.jp/jma_eew.json',{signal:AbortSignal.timeout(3000)});
+      if(!res.ok)throw new Error();
+      const d=await res.json();
+      document.getElementById('src-wolfx').className='src-dot active';
+      if(d&&d.EventID&&d.EventID!==lastEEWId){handleWolfxEEW(d);}
+    }catch(_){document.getElementById('src-wolfx').className='src-dot error';}
+  },3000);
+}
+
+function handleWolfxEEW(d){
+  const mag=parseFloat(d.Magunitude)||0;
+  const place=d.Hypocenter||'不明';
+  const depth=parseFloat(d.Depth)||10;
+  const lat=parseFloat(d.Latitude)||35.0;
+  const lng=parseFloat(d.Longitude)||136.0;
+  const originTime=d.OriginTime?new Date(d.OriginTime).getTime():Date.now();
+  const eewId=d.EventID||('wolfx-'+Date.now());
+  if(eewId===lastEEWId)return;
+  lastEEWId=eewId;
+  document.getElementById('first-report-label').textContent='第一報: Wolfx';
+  drawEEW({eewId,place,mag,depth,lat,lng,originTime,source:'Wolfx',serial:d.Serial||1});
+}
+
+/* ===================================================================
+   AXIS API (WebSocket + 心拍確認 + 自動再接続)
+=================================================================== */
+const AXIS_URL='wss://ws-api.wolfx.jp/jma_eew';
+const AXIS_HEARTBEAT_INTERVAL=20000;
+const AXIS_PONG_TIMEOUT=10000;
+
+function connectAxis(){
+  setAxisStatus('warn','接続中...');
+  try{
+    wsAxis=new WebSocket(AXIS_URL);
+    wsAxis.onopen=()=>{axisConnected=true;axisLastPong=Date.now();setAxisStatus('live','接続中');startAxisHeartbeat();};
+    wsAxis.onmessage=(e)=>{
+      axisLastPong=Date.now();
+      try{
+        if(e.data==='pong')return;
+        const d=JSON.parse(e.data);
+        if(d&&d.EventID&&d.EventID!==lastEEWId){handleAxisEEW(d);}
+      }catch(_){}
+    };
+    wsAxis.onerror=()=>scheduleAxisReconnect();
+    wsAxis.onclose=()=>{axisConnected=false;setAxisStatus('err','切断');stopAxisHeartbeat();scheduleAxisReconnect();};
+  }catch(e){setAxisStatus('err','接続失敗');scheduleAxisReconnect();}
+}
+
+function startAxisHeartbeat(){
+  stopAxisHeartbeat();
+  axisHeartbeatTimer=setInterval(()=>{
+    if(wsAxis&&wsAxis.readyState===WebSocket.OPEN){try{wsAxis.send('ping');}catch(_){}}
+    if(Date.now()-axisLastPong>AXIS_HEARTBEAT_INTERVAL+AXIS_PONG_TIMEOUT){setAxisStatus('warn','タイムアウト');wsAxis&&wsAxis.close();}
+  },AXIS_HEARTBEAT_INTERVAL);
+}
+
+function stopAxisHeartbeat(){if(axisHeartbeatTimer){clearInterval(axisHeartbeatTimer);axisHeartbeatTimer=null;}}
+
+function scheduleAxisReconnect(){
+  stopAxisHeartbeat();
+  if(axisReconnectTimer)return;
+  setAxisStatus('warn','再接続待機');
+  axisReconnectTimer=setTimeout(()=>{axisReconnectTimer=null;if(connected||demoMode)connectAxis();},5000);
+}
+
+function handleAxisEEW(d){
+  const mag=parseFloat(d.Magunitude||d.magnitude)||0;
+  const place=d.Hypocenter||d.place||'不明';
+  const depth=parseFloat(d.Depth||d.depth)||10;
+  const lat=parseFloat(d.Latitude||d.lat)||35.0;
+  const lng=parseFloat(d.Longitude||d.lng)||136.0;
+  const originTime=d.OriginTime?new Date(d.OriginTime).getTime():Date.now();
+  const eewId=d.EventID||d.id||('axis-'+Date.now());
+  if(eewId===lastEEWId)return;
+  lastEEWId=eewId;
+  document.getElementById('first-report-label').textContent='第一報: Axis';
+  drawEEW({eewId,place,mag,depth,lat,lng,originTime,source:'Axis'});
+}
+
+/* ===================================================================
+   EEW統合描画 (マルチEEW対応)
+=================================================================== */
+function drawEEW({eewId,place,mag,depth,lat,lng,originTime,source,serial,typeStr}){
+  const arr=calcArrival(lat,lng,depth,mag);
+  const eewData={place,mag,depth,lat,lng,arr,originTime,source};
+  const isNew=addOrUpdateEEW(eewId,eewData);
+
+  showEEWBanner(place,mag,depth,new Date(originTime).toISOString(),source,typeStr||`第${serial||1}報`,arr);
+  updateArrivalPanelFromEEWs();
+  addEpicenterMarker(eewId,lat,lng,depth,mag,eewData.color);
+  lastStationData=generateSyntheticStations();
+  setFetchRate(true);
+
+  // アラート確実発報
+  checkAndAlert(arr.si, place, mag);
+
+  if(isNew){
+    playEEWChime();
+    speak(`緊急地震速報。${place}で地震。マグニチュード${mag.toFixed(1)}。国分寺まで${arr.tS.toFixed(0)}秒。`,arr.si);
+    lastSpeechSI=arr.si;
+  }
+
+  notify(`【速報】${place}で地震`,`M${mag.toFixed(1)} 深さ${depth}km — ${source}\n国分寺 到達まで${arr.tS.toFixed(0)}秒 / 予測震度${siLabel(arr.si)}`);
+
+  if(isNew){
+    const card=document.createElement('div');
+    card.className='eq-card eew is-new level-high';
+    card.innerHTML=`
+      <div class="mag-badge mag-high"><span class="mag-num">M${mag.toFixed(1)}</span><span class="mag-label">EEW</span></div>
+      <div class="eq-info">
+        <div class="eq-place"><span class="eew-badge">緊急速報</span><span class="src-label ${source.toLowerCase()}">${source}</span> ${place}</div>
+        <div class="eq-meta"><span>深さ ${depth}km</span><span>国分寺 予測震度${siLabel(arr.si)}</span><span>P${arr.tP.toFixed(0)}s/S${arr.tS.toFixed(0)}s</span></div>
+      </div>
+      <div class="eq-time">${fmtTime(new Date(originTime).toISOString())}</div>
+      <span class="eq-arrow">›</span>
+    `;
+    card.onclick=()=>openModalEEW({place,mag,depth,lat,lng,arr,time:new Date(originTime).toISOString()});
+    insertCard(card,true,false);
+    updateMetrics(mag,new Date(originTime).toISOString());
+  }
+
+  setTimeout(()=>{
+    if(activeEEWs.has(eewId)){
+      const d=activeEEWs.get(eewId);
+      if(d.epicMarker){d.epicMarker.remove();d.epicMarker=null;}
+      activeEEWs.delete(eewId);
+      renderMultiEEWPanel();
+      if(activeEEWs.size===0){setFetchRate(false);}
+    }
+  },60000);
+}
+
+function addEpicenterMarker(eewId,lat,lng,depth,mag,color){
+  const epicIcon=L.divIcon({
+    html:`<div style="width:16px;height:16px;border-radius:50%;background:${color||'#ff1840'}33;border:2px solid ${color||'#ff1840'};animation:epicPulse 0.6s ease infinite alternate"></div>`,
+    className:'',iconSize:[16,16],iconAnchor:[8,8]
+  });
+  const marker=L.marker([lat,lng],{icon:epicIcon,zIndexOffset:900})
+    .addTo(map)
+    .bindPopup(`<strong style="color:${color||'#ff1840'}">震源 (EEW)</strong><br>${lat.toFixed(2)}°N, ${lng.toFixed(2)}°E<br>深さ ${depth}km / M${mag.toFixed(1)}`);
+  if(activeEEWs.has(eewId)){
+    const d=activeEEWs.get(eewId);
+    if(d.epicMarker){d.epicMarker.remove();}
+    d.epicMarker=marker;activeEEWs.set(eewId,d);
+  }
+  // オートパン (固定しない — ユーザーが地図を動かせる状態を維持)
+  if(map){
+    try{
+      const points=[[MY_LAT,MY_LNG]];
+      activeEEWs.forEach(d=>points.push([d.lat,d.lng]));
+      if(points.length>=2){
+        const bounds=L.latLngBounds(points);
+        map.fitBounds(bounds,{padding:[70,70],maxZoom:8,animate:true,duration:0.8});
+      }
+    }catch(_){}
+  }
+}
+
+/* ===================================================================
+   P2P EEW Handler
+=================================================================== */
+function handleEEW_P2P(data,source='P2P'){
+  const eq=data.earthquake||{},hypo=eq.hypocenter||{};
+  const mag=parseFloat(hypo.magnitude)||0;
+  const place=hypo.name||'不明';
+  const depth=hypo.depth||0;
+  const lat=hypo.latitude||35.0;
+  const lng=hypo.longitude||136.0;
+  const originTime=eq.time?new Date(eq.time).getTime():Date.now();
+  const eewId=data.id||data.eventId||('p2p-'+Date.now());
+  document.getElementById('first-report-label').textContent='第一報: '+source;
+  drawEEW({eewId,place,mag,depth,lat,lng,originTime,source,typeStr:'緊急地震速報 第一報'});
+}
+
+/* ===================================================================
+   EEWバナー表示
+=================================================================== */
+function showEEWBanner(place,mag,depth,timeStr,source,typeStr,arr){
+  document.getElementById('eew-place').textContent=place;
+  document.getElementById('eew-mag').textContent='M'+mag.toFixed(1);
+  document.getElementById('eew-depth').textContent=depth;
+  document.getElementById('eew-time-val').textContent=fmtTime(timeStr);
+  document.getElementById('eew-source-tag').textContent=source;
+  document.getElementById('eew-source-info').textContent='電文種別: '+typeStr;
+  const si=arr?arr.si:calcArrival(35,136,depth,mag).si;
+  document.getElementById('eew-si-pred').textContent='国分寺 予測: 震度'+siLabel(si);
+  document.getElementById('eew-banner').classList.add('active');
+}
+function hideEEWBanner(){document.getElementById('eew-banner').classList.remove('active');}
+
+/* ===================================================================
+   QUAKE HANDLER + CARD BUILDER
+=================================================================== */
+function getKokubunjiObservedSI(points){
+  if(!points||points.length===0)return null;
+  const koku=points.find(p=>{const addr=(p.addr||p.address||'');return addr.includes('国分寺')||addr.includes('小金井')||addr.includes('府中');});
+  if(koku)return{si:koku.scale/10,label:scaleLabel(koku.scale),isObserved:true};
+  const tokyo=points.filter(p=>{const a=(p.addr||'');return a.includes('東京');});
+  if(tokyo.length>0){
+    const maxTokyo=tokyo.reduce((a,b)=>(a.scale||0)>(b.scale||0)?a:b);
+    return{si:maxTokyo.scale/10,label:scaleLabel(maxTokyo.scale),isObserved:false};
+  }
+  return null;
+}
+
+function handleQuake(data,isLive,source='P2P'){
+  const card=buildQuakeCard(data,isLive,source);
+  if(!card)return;
+  insertCard(card,isLive,false);
+  const eq=data.earthquake||{},hypo=eq.hypocenter||{};
+  const mag=parseFloat(hypo.magnitude)||0;
+  updateMetrics(mag,eq.time);
+  if(isLive){
+    playUpdateChime();
+    const place=hypo.name||'不明';
+    notify('地震発生: '+place,`M${mag.toFixed(1)} 最大震度 ${scaleLabel(eq.maxScale)}`);
+  }
+}
+
+function buildQuakeCard(data,isNew,source='P2P'){
+  try{
+    const eq=data.earthquake||{},hypo=eq.hypocenter||{};
+    const mag=parseFloat(hypo.magnitude)||0;
+    if(mag<minMag)return null;
+    const place=hypo.name||'不明';
+    const depth=hypo.depth!=null?hypo.depth+'km':'—';
+    const scale=eq.maxScale!=null?scaleLabel(eq.maxScale):'—';
+    const level=mag>=5?'high':mag>=3?'mid':'low';
+    const card=document.createElement('div');
+    card.className='eq-card level-'+level+(isNew?' is-new':'');
+    const lat=hypo.latitude||35,lng=hypo.longitude||136,d=hypo.depth||10;
+    const arr=calcArrival(lat,lng,d,mag);
+    const points=data.points||[];
+    const kokuSI=getKokubunjiObservedSI(points);
+    const siText=kokuSI?
+      (kokuSI.isObserved?`<span style="color:var(--green)">観測 震度${kokuSI.label}</span>`:`<span style="color:var(--accent2)">周辺 震度${kokuSI.label}</span>`):
+      `<span style="color:var(--muted2)">予測 震度${siLabel(arr.si)}</span>`;
+    card.innerHTML=`
+      <div class="mag-badge mag-${level}"><span class="mag-num">M${mag.toFixed(1)}</span><span class="mag-label">QUAKE</span></div>
+      <div class="eq-info">
+        <div class="eq-place">${place} <span class="src-label ${source.toLowerCase()}">${source}</span></div>
+        <div class="eq-meta"><span>深さ ${depth}</span><span>最大震度 ${scale}</span>${siText}</div>
+      </div>
+      <div class="eq-time">${fmtTime(eq.time||'')}</div>
+      <span class="eq-arrow">›</span>
+    `;
+    card.onclick=()=>openModalQuake(data);
+    return card;
+  }catch(_){return null;}
+}
+
+function scaleLabel(s){
+  const m={10:'1',20:'2',30:'3',40:'4',45:'5弱',50:'5強',55:'6弱',60:'6強',70:'7'};
+  return m[s]||(s>0?String(Math.floor(s/10)):'—');
+}
+
+function insertCard(card,isLive,isDemo){
+  const feed=document.getElementById('feed');
+  const empty=feed.querySelector('.empty-state,.loading-state');
+  if(empty)empty.remove();
+  if(isDemo){
+    const sep=document.getElementById('demo-sep');
+    sep?sep.insertAdjacentElement('afterend',card):feed.insertBefore(card,feed.firstChild);
+  }else if(isLive){
+    const sep=document.getElementById('live-sep');
+    sep?sep.insertAdjacentElement('afterend',card):feed.insertBefore(card,feed.firstChild);
+  }else{feed.appendChild(card);}
+  feedCount++;
+  document.getElementById('feed-count').textContent=feedCount+'件';
+  const cards=feed.querySelectorAll('.eq-card');
+  if(cards.length>200)cards[cards.length-1].remove();
+}
+
+function updateMetrics(mag,time){
+  totalCount++;
+  document.getElementById('m-count').textContent=totalCount;
+  if(maxMag===null||mag>maxMag){
+    maxMag=mag;
+    const el=document.getElementById('m-max');
+    el.textContent=mag.toFixed(1);
+    el.className='metric-value'+(mag>=5?' danger':mag>=3?' warn':' ok');
+  }
+  if(time)document.getElementById('m-last').textContent=fmtTime(time);
+}
+
+function resetBtn(){
+  const btn=document.getElementById('btn-connect');
+  btn.textContent='再接続';btn.className='btn primary';btn.disabled=false;
+}
+
+function disconnect(){
+  if(ws){ws.onclose=null;ws.close();}ws=null;connected=false;
+  if(wolfxPollTimer){clearInterval(wolfxPollTimer);wolfxPollTimer=null;}
+  if(wsAxis){wsAxis.onclose=null;wsAxis.close();wsAxis=null;}
+  stopAxisHeartbeat();
+  if(axisReconnectTimer){clearTimeout(axisReconnectTimer);axisReconnectTimer=null;}
+  axisConnected=false;setWsStatus('','切断済み');setAxisStatus('err','切断済み');resetBtn();
+  document.getElementById('src-p2p').className='src-dot';
+  document.getElementById('src-wolfx').className='src-dot';
+}
+
+/* ===================================================================
+   DEMO SCENARIOS
+=================================================================== */
+const SCENARIOS={
+  small:{type:'quake',place:'茨城県南部',mag:2.8,depth:50,lat:36.0,lng:140.1,scale:20},
+  medium:{type:'quake',place:'千葉県東方沖',mag:4.5,depth:30,lat:35.8,lng:141.0,scale:40},
+  large:{type:'quake',place:'宮城県沖',mag:6.2,depth:10,lat:38.5,lng:142.0,scale:55},
+  eew:{type:'eew',place:'静岡県駿河湾',mag:7.3,depth:23,lat:34.8,lng:138.5},
+  tokai:{type:'eew',place:'東海沖',mag:8.0,depth:20,lat:33.5,lng:137.5},
+  noto:{type:'eew',place:'石川県能登地方',mag:7.6,depth:10,lat:37.5,lng:137.2,description:'2024年1月1日 16:10発生。令和6年能登半島地震。'},
+  '311':{type:'eew',place:'三陸沖',mag:9.0,depth:24,lat:38.1,lng:142.9,description:'2011年3月11日 14:46発生。東北地方太平洋沖地震（東日本大震災）。'},
+};
+
+function runScenario(key){
+  if(!demoMode)return;
+  const s={...SCENARIOS[key],time:new Date().toISOString()};
+  const originTime=Date.now();
+
+  if(s.type==='eew'){
+    const eewId='demo-'+key+'-'+Date.now();
+    notify(`【速報・DEMO】${s.place}で地震`,`M${s.mag.toFixed(1)} 深さ${s.depth}km\n（これはデモです）`);
+    drawEEW({eewId,place:s.place,mag:s.mag,depth:s.depth,lat:s.lat,lng:s.lng,originTime,source:'DEMO',typeStr:s.description||'デモシナリオ'});
+    const arr=calcArrival(s.lat,s.lng,s.depth,s.mag);
+    const card=makeDemoCard(s,true,arr);
+    insertCard(card,true,true);
+  }else{
+    insertCard(makeDemoCard(s,false,null),true,true);
+    playUpdateChime();
+    notify(`地震情報 DEMO: ${s.place}`,`M${s.mag.toFixed(1)} 最大震度 ${scaleLabel(s.scale)}\n（これはデモです）`);
+  }
+  updateMetrics(s.mag,s.time);
+}
+
+/* 同時多発デモ: 三陸沖M9.0 + 東京直下M7.5 */
+function runDualScenario(){
+  if(!demoMode)return;
+  const eq1={place:'三陸沖',mag:9.0,depth:24,lat:38.1,lng:142.9,description:'三陸沖巨大地震（仮想シナリオ）'};
+  const eq2={place:'東京湾北部（東京直下型）',mag:7.5,depth:35,lat:35.6,lng:139.8,description:'首都直下地震（仮想シナリオ）'};
+  const now=Date.now();
+  const eewId1='demo-dual-sanriku-'+now;
+  const eewId2='demo-dual-tokyo-'+(now+5000);
+
+  drawEEW({eewId:eewId1,place:eq1.place,mag:eq1.mag,depth:eq1.depth,lat:eq1.lat,lng:eq1.lng,originTime:now,source:'DEMO',typeStr:eq1.description});
+  notify(`【DEMO・第1報】${eq1.place}で地震`,`M${eq1.mag} 深さ${eq1.depth}km — 東京直下地震も同時発生`);
+
+  setTimeout(()=>{
+    drawEEW({eewId:eewId2,place:eq2.place,mag:eq2.mag,depth:eq2.depth,lat:eq2.lat,lng:eq2.lng,originTime:Date.now(),source:'DEMO',typeStr:eq2.description});
+    notify(`【DEMO・第2報】${eq2.place}で地震`,`M${eq2.mag} 深さ${eq2.depth}km — 複数同時発生中`);
+    playEEWChime();
+    speak(`警告！東京湾北部でも地震が発生しました。マグニチュード7点5。直下型です。`,10);
+  },2000);
+
+  [eq1,eq2].forEach((eq,i)=>{
+    const arr=calcArrival(eq.lat,eq.lng,eq.depth,eq.mag);
+    const card=makeDemoCard({...eq,time:new Date(now+i*2000).toISOString(),type:'eew'},true,arr);
+    insertCard(card,true,true);
+  });
+  updateMetrics(9.0,new Date().toISOString());
+}
+
+function makeDemoCard(s,isEEW,arr){
+  const level=s.mag>=5?'high':s.mag>=3?'mid':'low';
+  const card=document.createElement('div');
+  card.className='eq-card level-'+level+' is-demo'+(isEEW?' eew':'');
+  let meta=`<span>深さ ${s.depth}km</span>`;
+  if(arr){meta+=`<span>国分寺 予測震度: ${siLabel(arr.si)}</span><span>P ${arr.tP.toFixed(0)}s / S ${arr.tS.toFixed(0)}s</span>`;}
+  card.innerHTML=`
+    <div class="mag-badge mag-demo"><span class="mag-num">M${s.mag.toFixed(1)}</span><span class="mag-label">${isEEW?'EEW':'DEMO'}</span></div>
+    <div class="eq-info">
+      <div class="eq-place"><span class="demo-tag">DEMO</span>${isEEW?'<span class="eew-badge">緊急速報</span>':''}${s.place}</div>
+      <div class="eq-meta">${meta}</div>
+    </div>
+    <div class="eq-time">${fmtTime(s.time||new Date().toISOString())}</div>
+    <span class="eq-arrow">›</span>
+  `;
+  if(arr)card.onclick=()=>openModalEEW({place:s.place,mag:s.mag,depth:s.depth,lat:s.lat,lng:s.lng,arr,time:s.time,description:s.description});
+  return card;
+}
+
+/* ===================================================================
+   DETAIL MODAL
+=================================================================== */
+let miniMap=null;
+
+function openModalQuake(data){
+  const eq=data.earthquake||{},hypo=eq.hypocenter||{};
+  const mag=parseFloat(hypo.magnitude)||0;
+  const place=hypo.name||'不明';
+  const depth=hypo.depth||0;
+  const lat=hypo.latitude||35;
+  const lng=hypo.longitude||136;
+  const scale=eq.maxScale!=null?scaleLabel(eq.maxScale):'—';
+  const tsunami=data.tsunami||data.issue?.type||'なし';
+  const arr=calcArrival(lat,lng,depth,mag);
+  const level=mag>=5?'high':mag>=3?'mid':'low';
+
+  setModalBase(place,mag,level,eq.time||'');
+  document.getElementById('modal-depth').textContent=depth+'km';
+  document.getElementById('modal-detail-mag').textContent='M'+mag.toFixed(1);
+  document.getElementById('modal-maxscale').textContent='最大震度 '+scale;
+  document.getElementById('modal-coords').textContent=lat.toFixed(2)+'°N, '+lng.toFixed(2)+'°E';
+  document.getElementById('modal-dist').textContent=arr.epicDistKm.toFixed(0)+'km';
+
+  const tsunamiBadge=document.getElementById('modal-tsunami-badge');
+  const tType=determineTsunami(tsunami,mag);
+  tsunamiBadge.innerHTML=`<span class="tsunami-badge ${tType.cls}">${tType.icon} ${tType.text}</span>`;
+  document.getElementById('modal-tsunami-short').textContent=tType.text;
+
+  document.getElementById('modal-kokubunji').style.display='block';
+  const points=data.points||[];
+  const kokuSI=getKokubunjiObservedSI(points);
+  const siLabel_el=document.getElementById('modal-koku-si-label');
+  const siVal_el=document.getElementById('modal-koku-si');
+  if(kokuSI&&kokuSI.isObserved){siLabel_el.textContent='観測された震度';siVal_el.textContent='震度'+kokuSI.label;siVal_el.style.color=siColor(kokuSI.si);}
+  else if(kokuSI){siLabel_el.textContent='周辺観測震度';siVal_el.textContent='震度'+kokuSI.label;siVal_el.style.color=siColor(kokuSI.si);}
+  else{siLabel_el.textContent='予測震度';const predSi=arr.si;siVal_el.textContent=predSi>=0.5?'震度'+siLabel(predSi):'震度0（無感）';siVal_el.style.color=predSi>=0.5?siColor(predSi):'var(--muted)';}
+  document.getElementById('modal-koku-tp').textContent=arr.tP.toFixed(0)+'s';
+  document.getElementById('modal-koku-ts').textContent=arr.tS.toFixed(0)+'s';
+
+  if(points.length>0){
+    document.getElementById('modal-intensity-section').style.display='block';
+    const list=document.getElementById('modal-intensity-list');
+    list.innerHTML='';
+    const sorted=[...points].sort((a,b)=>(b.scale||0)-(a.scale||0)).slice(0,14);
+    for(const p of sorted){
+      const sc=scaleLabel(p.scale);
+      const addr=p.addr||p.address||'—';
+      const isKoku=addr.includes('国分寺')||addr.includes('小金井')||addr.includes('府中');
+      const row=document.createElement('div');
+      row.className='intensity-row'+(isKoku?' koku-highlight':'');
+      row.style.borderLeftColor=siColor(p.scale/10);
+      row.innerHTML=`<div class="i-swatch" style="background:${siColor(p.scale/10)}"></div><span class="i-place">${addr}${isKoku?' 📍':''}</span><span class="i-val" style="color:${siColor(p.scale/10)}">${sc}</span>`;
+      list.appendChild(row);
+    }
+  }else{document.getElementById('modal-intensity-section').style.display='none';}
+  initMiniMap(lat,lng);openModal();
+}
+
+function openModalEEW(d){
+  const{place,mag,depth,lat,lng,arr,time,description}=d;
+  const level=mag>=5?'high':mag>=3?'mid':'low';
+  setModalBase(place,mag,level,time);
+  document.getElementById('modal-depth').textContent=depth+'km';
+  document.getElementById('modal-detail-mag').textContent='M'+mag.toFixed(1);
+  document.getElementById('modal-maxscale').textContent='緊急速報 (EEW)';
+  document.getElementById('modal-coords').textContent=lat.toFixed(2)+'°N, '+lng.toFixed(2)+'°E';
+  document.getElementById('modal-dist').textContent=arr.epicDistKm.toFixed(0)+'km';
+  document.getElementById('modal-tsunami-short').textContent='—';
+  document.getElementById('modal-tsunami-badge').innerHTML=description?`<p style="font-size:12px;color:var(--muted2);line-height:1.8">${description}</p>`:'';
+  document.getElementById('modal-kokubunji').style.display='block';
+  document.getElementById('modal-koku-si-label').textContent='予測震度';
+  const predSi=arr.si;
+  document.getElementById('modal-koku-si').textContent=predSi>=0.5?'震度'+siLabel(predSi):'震度0（無感）';
+  document.getElementById('modal-koku-si').style.color=predSi>=0.5?siColor(predSi):'var(--muted)';
+  document.getElementById('modal-koku-tp').textContent=arr.tP.toFixed(0)+'s';
+  document.getElementById('modal-koku-ts').textContent=arr.tS.toFixed(0)+'s';
+  document.getElementById('modal-intensity-section').style.display='none';
+  initMiniMap(lat,lng);openModal();
+}
+
+function setModalBase(place,mag,level,time){
+  document.getElementById('modal-place').textContent=place;
+  document.getElementById('modal-mag-num').textContent='M'+mag.toFixed(1);
+  document.getElementById('modal-mag-label').textContent=level==='high'?'HIGH':level==='mid'?'MID':'LOW';
+  const badge=document.getElementById('modal-mag-badge');
+  badge.className='modal-mag mag-'+level;
+  badge.style.background=level==='high'?'rgba(255,61,87,0.12)':level==='mid'?'rgba(255,170,48,0.1)':'rgba(0,224,144,0.1)';
+  badge.style.color=level==='high'?'var(--red)':level==='mid'?'var(--amber)':'var(--green)';
+  document.getElementById('modal-time').textContent=time?new Date(time).toLocaleString('ja-JP'):'—';
+}
+
+function determineTsunami(tsunami,mag){
+  if(typeof tsunami==='string'&&(tsunami.includes('大津波')||tsunami.includes('major')))
+    return{cls:'tsunami-major',icon:'🌊',text:'大津波警報'};
+  if(typeof tsunami==='string'&&(tsunami.includes('津波')||tsunami.includes('tsunami')))
+    return{cls:'tsunami-warn',icon:'⚠️',text:'津波警報・注意報'};
+  if(mag>=7.5)return{cls:'tsunami-warn',icon:'⚠️',text:'津波の可能性あり'};
+  return{cls:'tsunami-none',icon:'✓',text:'津波の心配なし'};
+}
+
+function initMiniMap(lat,lng){
+  const container=document.getElementById('mini-map');
+  if(miniMap){miniMap.remove();miniMap=null;}
+  miniMap=L.map(container,{center:[lat,lng],zoom:6,zoomControl:false,attributionControl:false,dragging:false});
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{subdomains:'abcd',maxZoom:18,opacity:0.9}).addTo(miniMap);
+  const eIcon=L.divIcon({html:'<div class="epicenter-icon"></div>',className:'',iconSize:[16,16],iconAnchor:[8,8]});
+  L.marker([lat,lng],{icon:eIcon}).addTo(miniMap);
+  const mIcon=L.divIcon({html:'<div class="my-location-icon"></div>',className:'',iconSize:[20,20],iconAnchor:[10,10]});
+  L.marker([MY_LAT,MY_LNG],{icon:mIcon}).addTo(miniMap);
+  L.polyline([[lat,lng],[MY_LAT,MY_LNG]],{color:'rgba(255,255,255,0.15)',weight:1,dashArray:'4,6'}).addTo(miniMap);
+  setTimeout(()=>miniMap.invalidateSize(),100);
+}
+
+function openModal(){document.getElementById('detail-modal').classList.add('open');document.body.style.overflow='hidden';}
+function closeModal(){document.getElementById('detail-modal').classList.remove('open');document.body.style.overflow='';}
+document.getElementById('detail-modal').addEventListener('click',e=>{
+  if(e.target===document.getElementById('detail-modal'))closeModal();
+});
+
+/* ===================================================================
+   UI HELPERS
+=================================================================== */
+function switchTab(name,btn){
+  document.querySelectorAll('.tab-panel').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  document.getElementById('tab-'+name).classList.add('active');
+  btn.classList.add('active');
+}
+
+function toggleDemo(){
+  demoMode=!demoMode;
+  const btn=document.getElementById('btn-demo');
+  const info=document.getElementById('demo-info');
+  if(demoMode){
+    btn.textContent='デモ終了';btn.className='btn danger-btn';
+    info.classList.add('active');
+    if(!connected)setWsStatus('','デモモード');
+    const feed=document.getElementById('feed');
+    const empty=feed.querySelector('.empty-state,.loading-state');
+    if(empty)empty.remove();
+    if(!document.getElementById('demo-sep')){
+      const sep=document.createElement('div');sep.className='separator';sep.id='demo-sep';sep.textContent='デモシナリオ';
+      feed.insertBefore(sep,feed.firstChild);
+    }
+    if(!axisConnected)connectAxis();
+  }else{
+    btn.textContent='デモ';btn.className='btn demo-btn';
+    info.classList.remove('active');
+    clearAllEEW();
+    if(!connected)setWsStatus('','未接続');
+    document.querySelectorAll('.eq-card.is-demo').forEach(c=>c.remove());
+    const sep=document.getElementById('demo-sep');if(sep)sep.remove();
+    feedCount=document.getElementById('feed').querySelectorAll('.eq-card').length;
+    document.getElementById('feed-count').textContent=feedCount+'件';
+  }
+}
+
+function updateMinMag(v){
+  minMag=parseFloat(v);
+  document.getElementById('min-mag-val').textContent=parseFloat(v).toFixed(1);
+}
+
+function fmtTime(iso){
+  if(!iso)return'—';
+  try{const d=new Date(iso);return pad(d.getMonth()+1)+'/'+pad(d.getDate())+' '+pad(d.getHours())+':'+pad(d.getMinutes());}
+  catch(_){return iso;}
+}
+
+/* ===================================================================
+   NOTIFICATIONS
+=================================================================== */
+async function requestNotif(){
+  if(!('Notification' in window)){alert('このブラウザは通知非対応です');return;}
+  const perm=await Notification.requestPermission();
+  const banner=document.getElementById('notif-banner');
+  if(perm==='granted'){
+    banner.className='notif-banner granted';
+    banner.innerHTML='<p>✓ プッシュ通知が有効です（S波10秒前・EEW受信時に自動通知）</p>';
+  }else{banner.querySelector('p').textContent='設定からサイトの通知を許可してください';}
+}
+
+function notify(title,body){
+  if(Notification.permission==='granted'){
+    new Notification(title,{
+      body,
+      icon:'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><circle cx="16" cy="16" r="16" fill="%23ff1840"/><text x="16" y="21" text-anchor="middle" font-size="14" fill="white">震</text></svg>'
+    });
+  }
+}
+
+if(Notification.permission==='granted'){
+  const b=document.getElementById('notif-banner');
+  b.className='notif-banner granted';
+  b.innerHTML='<p>✓ 通知が許可されています</p>';
+}
+
+/* ===================================================================
+   APP INIT
+=================================================================== */
+function initApp(){
+  document.getElementById('start-overlay').classList.add('hidden');
+  ensureAudio();
+  if('Notification' in window&&Notification.permission==='default'){Notification.requestPermission();}
+  initMap();
+  lastStationData=generateSyntheticStations();
+  startKyoshin();
+  fpsTimer=Date.now();
+}
+
+window.addEventListener('DOMContentLoaded',()=>{
+  // 起動画面が表示されるまで待機
+});
+</script>
+</body>
+</html>
