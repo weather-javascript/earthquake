@@ -2819,7 +2819,8 @@ function _rtBuildUrl(offsetSec){
   const ss   = String(jst.getUTCSeconds()).padStart(2,'0');
   const date  = `${yyyy}${mm}${dd}`;
   const ts    = `${date}${hh}${mi}${ss}`;
-  const base  = `http://www.kmoni.bosai.go.jp/data/map_img/RealTimeImg/jma_s/${date}/${ts}.jma_s.gif`;
+  // corsproxy.io は https:// URLでないと動作しないため https を使用
+  const base  = `https://www.kmoni.bosai.go.jp/data/map_img/RealTimeImg/jma_s/${date}/${ts}.jma_s.gif`;
   return {url: base, ts};
 }
 
@@ -2999,57 +3000,60 @@ async function fetchKyoshinData(){
     // GIFエンジン失敗 → 旧方式フォールバック
   }
 
+  // GIFエンジン失敗時のフォールバック:
+  // lmoni は CORS/404のため使用不可。corsproxy.io経由でkmoni GIFを再試行。
   const dot=document.getElementById('nied-dot');
   dot.className='nied-dot fetching';
   try{
-    const now=new Date(Date.now()-2000);
-    const yyyy=now.getUTCFullYear();
-    const mm=String(now.getUTCMonth()+1).padStart(2,'0');
-    const dd=String(now.getUTCDate()).padStart(2,'0');
-    const hh=String(now.getUTCHours()).padStart(2,'0');
-    const mi=String(now.getUTCMinutes()).padStart(2,'0');
-    const ss=String(now.getUTCSeconds()).padStart(2,'0');
-    const tsStr=`${yyyy}${mm}${dd}${hh}${mi}${ss}`;
-    const proxyUrls=[
-      `https://www.lmoni.bosai.go.jp/monitor/jma_s.png?t=${tsStr}`,
-      `https://www.kmoni.bosai.go.jp/data/map_img/RealTimeImg/jma_s/${yyyy}${mm}${dd}/${tsStr}.jma_s.png`,
-      `https://www.lmoni.bosai.go.jp/monitor/jma_s.png`
-    ];
+    // JSTベースのURLを複数秒オフセットで試行（遅延配信対策）
+    const jstNow = new Date(Date.now() + 9*3600*1000);
+    const yyyy=String(jstNow.getUTCFullYear());
+    const mm=String(jstNow.getUTCMonth()+1).padStart(2,'0');
+    const dd=String(jstNow.getUTCDate()).padStart(2,'0');
+    const hh=String(jstNow.getUTCHours()).padStart(2,'0');
+    const mi=String(jstNow.getUTCMinutes()).padStart(2,'0');
+    // 5秒前・8秒前・12秒前を順に試行
+    const offsets = [5, 8, 12];
+    let loaded = false;
     if(!window._kyoshinImgCanvas){
       window._kyoshinImgCanvas=document.createElement('canvas');
       window._kyoshinImgCtx=window._kyoshinImgCanvas.getContext('2d',{willReadFrequently:true});
     }
-    let loaded=false;
-    for(const url of proxyUrls){
+    for(const off of offsets){
       try{
-        const img=new Image();img.crossOrigin='anonymous';
-        await new Promise((res,rej)=>{
-          img.onload=res;img.onerror=rej;img.src=url;setTimeout(rej,4000);
-        });
-        window._kyoshinImgCanvas.width=img.naturalWidth||352;
-        window._kyoshinImgCanvas.height=img.naturalHeight||400;
-        window._kyoshinImgCtx.clearRect(0,0,window._kyoshinImgCanvas.width,window._kyoshinImgCanvas.height);
-        window._kyoshinImgCtx.drawImage(img,0,0);
+        const t = new Date(jstNow.getTime() - off*1000);
+        const ss2=String(t.getUTCSeconds()).padStart(2,'0');
+        const ts2=`${yyyy}${mm}${dd}${hh}${mi}${ss2}`;
+        const gifUrl=`https://www.kmoni.bosai.go.jp/data/map_img/RealTimeImg/jma_s/${yyyy}${mm}${dd}/${ts2}.jma_s.gif`;
+        const pUrl=`https://corsproxy.io/?${encodeURIComponent(gifUrl)}&_=${Date.now()}`;
+        const resp=await fetch(pUrl,{signal:AbortSignal.timeout(3000),cache:'no-store'});
+        if(!resp.ok) continue;
+        const blob=await resp.blob();
+        const bUrl=URL.createObjectURL(blob);
+        const img=new Image();
+        await new Promise((res,rej)=>{img.onload=res;img.onerror=rej;img.src=bUrl;setTimeout(rej,3000);});
+        URL.revokeObjectURL(bUrl);
+        window._kyoshinImgCanvas.width=KMONI_IMG_W;
+        window._kyoshinImgCanvas.height=KMONI_IMG_H;
+        window._kyoshinImgCtx.clearRect(0,0,KMONI_IMG_W,KMONI_IMG_H);
+        window._kyoshinImgCtx.drawImage(img,0,0,KMONI_IMG_W,KMONI_IMG_H);
         loaded=true;
-        document.getElementById('hsv-status').textContent='NIED解析中';
+        document.getElementById('hsv-status').textContent='NIED GIF(FB)';
         document.getElementById('hsv-status').style.color='var(--green)';
         break;
       }catch(_){}
     }
     if(loaded){
       const fetchNow=Date.now();
-      const imgW=window._kyoshinImgCanvas.width;
-      const imgH=window._kyoshinImgCanvas.height;
-      const LAT_MAX=47.6,LAT_MIN=23.0,LNG_MIN=122.5,LNG_MAX=149.0;
       const result=KNET_STATIONS.map(st=>{
         try{
-          const ix=Math.round((st.lng-LNG_MIN)/(LNG_MAX-LNG_MIN)*imgW);
-          const iy=Math.round((LAT_MAX-st.lat)/(LAT_MAX-LAT_MIN)*imgH);
-          if(ix<0||ix>=imgW||iy<0||iy>=imgH)return{...st,si:-3};
+          const {x:ix,y:iy}=_latLngToKmoniXY(st.lat,st.lng);
+          if(ix<0||ix>=KMONI_IMG_W||iy<0||iy>=KMONI_IMG_H)return{...st,si:-3};
           const px=window._kyoshinImgCtx.getImageData(ix,iy,1,1).data;
           const pr=px[0],pg=px[1],pb=px[2],pa=px[3];
-          if(pa<80||(pr<15&&pg<15&&pb<15))return{...st,si:-3};
-          const si=rgbToSi(pr,pg,pb);
+          if(pa<60) return{...st,si:-3};
+          const si=getIntensityFromRGB(pr,pg,pb);
+          if(si===null) return{...st,si:-3};
           if(Math.abs(si-st.si)>0.05){
             st.prevRgb={...st.lerpRgb};st.lerpStart=fetchNow;
             if(si>=0.5&&!st.rippleActive){st.rippleActive=true;st.rippleT=0;}
